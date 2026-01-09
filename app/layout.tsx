@@ -1,12 +1,10 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Rollenspiel-App',
   description: 'App für Spielleiter und Spieler',
   manifest: '/manifest.json',
-  themeColor: '#0284c7',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -19,6 +17,14 @@ export const metadata: Metadata = {
     ],
     apple: '/icon-192.png',
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#0284c7',
 }
 
 export default function RootLayout({
