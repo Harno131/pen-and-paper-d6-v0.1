@@ -1,0 +1,53 @@
+[
+  {
+    "name": "Aloisius",
+    "playerName": "Julia",
+    "class": "Händler",
+    "race": "Mensch",
+    "level": "1",
+    "attributes": {
+      "Konstitution": "2D",
+      "Weisheit": "2D+2"
+    },
+    "inventory": []
+  },
+  {
+    "name": "Kalkor Flax",
+    "playerName": "Kobi",
+    "class": "Alchemist",
+    "race": "Mensch",
+    "level": "1",
+    "attributes": {
+      "Konstitution": "2D",
+      "Weisheit": "2D"
+    },
+    "inventory": []
+  },
+  {
+    "attributes": {
+      "Konstitution": "2D+2",
+      "Weisheit": "2D"
+    }
+  },
+  {
+    "name": "Goatse",
+    "playerName": "JJ",
+    "class": "armer junger Hirte mit einer traumatischen Vergangenheit",
+    "race": "Mensch",
+    "level": "1",
+    "attributes": {},
+    "inventory": []
+  },
+  {
+    "name": "",
+    "playerName": "Georg",
+    "class": "Krieger",
+    "race": "Zwerg",
+    "level": "",
+    "attributes": {
+      "Konstitution": "3D+1",
+      "Weisheit": "2D"
+    },
+    "inventory": []
+  }
+]

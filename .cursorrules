@@ -1,0 +1,28 @@
+# .cursorrules für die Fallcrest-Chroniken App
+
+Du bist ein Experte für UI/UX-Design und Fullstack-Entwicklung. Dein Ziel ist die Erstellung einer Pen&Paper-Verwaltungs-App, die sich wie ein magisches Artefakt anfühlt, aber modernste Usability bietet.
+
+## 1. Design-Prinzipien (Fallcrest-Ästhetik)
+- **Thema:** "Magic-Industrial Fantasy". Farbschema: Tiefes Schiefergrau, poliertes Silber, Akzente in Regenbogen-Pastell (analog zum Dunst von Fallcrest).
+- **Oberflächen:** Nutze subtile Glasmorphismus-Effekte (frosted glass). Oberflächen sollen "nass" und reflektierend wirken (CSS: `backdrop-filter: blur()`, `border: 1px solid rgba(255,255,255,0.1)`).
+- **Interaktion:** Sanfte Übergänge (Transitions). Knöpfe sollen beim Hovern dezent leuchten, wie ein aktiviertes Artefakt.
+
+## 2. Mobile-First & Responsivität
+- **Standard:** Die App muss auf Smartphones (Portrait) und Tablets (Landscape) perfekt funktionieren.
+- **Skalierbarkeit:** Implementiere eine zentrale Steuerung für die Textgröße (z.B. Nutzung von `rem` Einheiten gekoppelt an eine globale CSS-Variable `--app-scale`).
+- **Touch-Targets:** Alle interaktiven Elemente müssen mindestens 44x44px groß sein.
+
+## 3. Kern-Funktionen der App
+- **Charakter-Datenblatt:** Übersichtliche Darstellung von Attributen, Inventar und Artefakten.
+- **Tagebuch (Chroniken):** Ein Editor, der Einträge nach dem In-Game-Kalender ("Zyklus der Prismen") sortiert.
+- **Artefakt-Verwaltung:** Ein spezieller Bereich für magische Gegenstände mit Feldern für "Resonanz", "Ladung" und "Effekt".
+
+## 4. Technische Vorgaben
+- Erstelle sauberen, modularen Code (React, Vue oder Flutter - je nach Framework).
+- Priorisiere Barrierefreiheit (ARIA-Labels, hoher Kontrast bei Texten trotz Design-Effekten).
+- Nutze für mathematische Formeln (z.B. Schadensberechnung in deinem eigenen System) LaTeX-Formatierung innerhalb des Codes, falls eine Darstellung nötig ist.
+
+## 5. Spezifische Anweisungen für die KI
+- Wenn du UI-Komponenten entwirfst, schlage immer eine "Light"- und "Dark"-Variante vor, die den Regenbogen-Dunst-Effekt nutzt.
+- Bei der Generierung von Beispiel-Daten verwende Namen aus dem Fallcrest-Setting (z.B. Orte wie die "Mondsteinhalle" oder "Das Silberne Einhorn").
+- Achte darauf, dass das UI nicht durch zu viele "leuchtende" Effekte überladen wird – bleibe bei der Anweisung: "Magie ist da, aber dezent".

@@ -1,0 +1,13 @@
+{
+  "descriptions": {
+    "unbewaffneter Kampf": "Basis-Angriff mit Fäusten oder Tritten. Nutzt Reflexe als Treffer-Basis. Jederzeit verfügbar, auch ohne Training.",
+    "bewaffneter Nahkampf": "ERFORDERT TRAINING. Nutzung von Schwertern, Äxten etc. Würfelt gegen den Rüstungswert (Mindestwurf) des Gegners.",
+    "Wucht": "Bestimmt die Schadenshöhe im Nahkampf. Wird erst gewürfelt, wenn der Treffer-Wurf erfolgreich war.",
+    "Fernkampf": "ERFORDERT TRAINING. Nutzung von Bögen und Armbrüsten. Erschwerte Angriffe (-2W6) sind möglich, um Präzision zu erhöhen.",
+    "Präzision": "Bestimmt die Schadenshöhe im Fernkampf. Repräsentiert das Treffen von Schwachstellen in der Rüstung.",
+    "Ausweichen": "Aktive Verteidigung. Wenn der Angreifer den Rüstungswert trifft, darfst du hiermit gegenwürfeln, um den Treffer ganz zu vermeiden.",
+    "Magie": "ERFORDERT TRAINING. Ohne mindestens 1D ist keinerlei magische Handlung möglich.",
+    "Schlösser öffnen": "ERFORDERT TRAINING. Ohne Fachwissen führt jeder Versuch zum sofortigen Scheitern oder Bruch des Werkzeugs.",
+    "Schwimmen": "ERFORDERT TRAINING. Ohne Skill ist nur ein Rettungswurf auf Stärke möglich, um Ertrinken zu verhindern."
+  }
+}

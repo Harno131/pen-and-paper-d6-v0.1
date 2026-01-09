@@ -1,0 +1,24 @@
+[
+  {
+    "name": "Kalkor Flax",
+    "playerName": "Kobi",
+    "class": "Alchemist",
+    "race": "Mensch",
+    "level": "1",
+    "attributes": {
+      "Stärke": "2D"
+    },
+    "inventory": []
+  },
+  {
+    "name": "Goatse",
+    "playerName": "JJ",
+    "class": "armer junger Hirte mit einer traumatischen Vergangenheit",
+    "race": "Mensch",
+    "level": "1",
+    "attributes": {
+      "Stärke": "2D"
+    },
+    "inventory": []
+  }
+]

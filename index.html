@@ -1,0 +1,8 @@
+<button onclick="testSave()">Test-Speicherung in Supabase</button>
+
+<script type="module">
+    import { createNewCharacter } from './app.js';
+    
+    // Wir machen die Funktion im Browser-Fenster verfügbar
+    window.testSave = createNewCharacter;
+</script>

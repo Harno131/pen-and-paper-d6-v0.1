@@ -1,0 +1,213 @@
+{
+  "version": "1.0",
+  "exportDate": "2024-01-01",
+  "description": "Vollständige Liste aller Fertigkeiten für das Pen&Paper D6-System",
+  "skillsByAttribute": {
+    "Reflexe": [
+      "unbewaffneter Kampf",
+      "bewaffneter Nahkampf",
+      "Akrobatik",
+      "Klettern",
+      "Springen",
+      "Reiten",
+      "Schleichen"
+    ],
+    "Koordination": [
+      "Fernkampf",
+      "Steuern",
+      "Fingerfertigkeit",
+      "Schlösser öffnen"
+    ],
+    "Stärke": [
+      "Ausdauer",
+      "Heben",
+      "Rennen",
+      "Schwimmen"
+    ],
+    "Wissen": [
+      "Schulwissen",
+      "Handwerk",
+      "Navigation",
+      "Geschäftssinn",
+      "Heilkunde"
+    ],
+    "Wahrnehmung": [
+      "Überleben",
+      "schöne Künste",
+      "Spielen"
+    ],
+    "Ausstrahlung": [
+      "Betören",
+      "Bedrohen",
+      "Betrügen",
+      "Verkleiden",
+      "Kommandieren",
+      "mentaler Widerstand"
+    ],
+    "Magie": [
+      "magisches Wissen",
+      "magische Kraft",
+      "magische Konzentration",
+      "magische Ausdauer"
+    ]
+  },
+  "skillsFlat": [
+    {
+      "attribute": "Reflexe",
+      "name": "unbewaffneter Kampf"
+    },
+    {
+      "attribute": "Reflexe",
+      "name": "bewaffneter Nahkampf"
+    },
+    {
+      "attribute": "Reflexe",
+      "name": "Akrobatik"
+    },
+    {
+      "attribute": "Reflexe",
+      "name": "Klettern"
+    },
+    {
+      "attribute": "Reflexe",
+      "name": "Springen"
+    },
+    {
+      "attribute": "Reflexe",
+      "name": "Reiten"
+    },
+    {
+      "attribute": "Reflexe",
+      "name": "Schleichen"
+    },
+    {
+      "attribute": "Koordination",
+      "name": "Fernkampf"
+    },
+    {
+      "attribute": "Koordination",
+      "name": "Steuern"
+    },
+    {
+      "attribute": "Koordination",
+      "name": "Fingerfertigkeit"
+    },
+    {
+      "attribute": "Koordination",
+      "name": "Schlösser öffnen"
+    },
+    {
+      "attribute": "Stärke",
+      "name": "Ausdauer"
+    },
+    {
+      "attribute": "Stärke",
+      "name": "Heben"
+    },
+    {
+      "attribute": "Stärke",
+      "name": "Rennen"
+    },
+    {
+      "attribute": "Stärke",
+      "name": "Schwimmen"
+    },
+    {
+      "attribute": "Wissen",
+      "name": "Schulwissen"
+    },
+    {
+      "attribute": "Wissen",
+      "name": "Handwerk"
+    },
+    {
+      "attribute": "Wissen",
+      "name": "Navigation"
+    },
+    {
+      "attribute": "Wissen",
+      "name": "Geschäftssinn"
+    },
+    {
+      "attribute": "Wissen",
+      "name": "Heilkunde"
+    },
+    {
+      "attribute": "Wahrnehmung",
+      "name": "Überleben"
+    },
+    {
+      "attribute": "Wahrnehmung",
+      "name": "schöne Künste"
+    },
+    {
+      "attribute": "Wahrnehmung",
+      "name": "Spielen"
+    },
+    {
+      "attribute": "Ausstrahlung",
+      "name": "Betören"
+    },
+    {
+      "attribute": "Ausstrahlung",
+      "name": "Bedrohen"
+    },
+    {
+      "attribute": "Ausstrahlung",
+      "name": "Betrügen"
+    },
+    {
+      "attribute": "Ausstrahlung",
+      "name": "Verkleiden"
+    },
+    {
+      "attribute": "Ausstrahlung",
+      "name": "Kommandieren"
+    },
+    {
+      "attribute": "Ausstrahlung",
+      "name": "mentaler Widerstand"
+    },
+    {
+      "attribute": "Magie",
+      "name": "magisches Wissen"
+    },
+    {
+      "attribute": "Magie",
+      "name": "magische Kraft"
+    },
+    {
+      "attribute": "Magie",
+      "name": "magische Konzentration"
+    },
+    {
+      "attribute": "Magie",
+      "name": "magische Ausdauer"
+    }
+  ],
+  "statistics": {
+    "totalSkills": 32,
+    "attributesCount": 7,
+    "skillsPerAttribute": {
+      "Reflexe": 7,
+      "Koordination": 4,
+      "Stärke": 4,
+      "Wissen": 5,
+      "Wahrnehmung": 3,
+      "Ausstrahlung": 6,
+      "Magie": 4
+    }
+  },
+  "notes": {
+    "basiswert": "Der Basiswert einer Fertigkeit entspricht dem Attributwert",
+    "bonusDice": "Fertigkeiten können mit bis zu 8 D6 erhöht werden",
+    "blibs": "Spezialisierungen können Blibs vergeben: 1 Blib = +1, 2 Blibs = +2, 3 Blibs = +1D, 4 Blibs = +1D+1",
+    "geschwaechteFertigkeiten": "Geschwächte Fertigkeiten haben 3D weniger als das Attribut (min. 0D) und springen auf den normalen Wert, wenn sie gelernt werden"
+  }
+}
+
+
+
+
+
+

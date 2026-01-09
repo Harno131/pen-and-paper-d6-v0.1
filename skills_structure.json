@@ -1,0 +1,1284 @@
+{
+  "skills": [
+    {
+      "row": 34,
+      "attribute": "Reflexe",
+      "name": "unbewaffneter Kampf",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 37,
+      "attribute": "Reflexe",
+      "name": "bewaffneter Nahkampf",
+      "base": "4W",
+      "bonus": "2",
+      "total": ""
+    },
+    {
+      "row": 41,
+      "attribute": "Reflexe",
+      "name": "Akrobatik",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 42,
+      "attribute": "Reflexe",
+      "name": "Klettern",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 43,
+      "attribute": "Reflexe",
+      "name": "Springen",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 44,
+      "attribute": "Reflexe",
+      "name": "Reiten",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 45,
+      "attribute": "Reflexe",
+      "name": "Schleichen",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 46,
+      "attribute": "Reflexe",
+      "name": "…",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 47,
+      "attribute": "Reflexe",
+      "name": "…",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 50,
+      "attribute": "Koordination",
+      "name": "Fernkampf",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 54,
+      "attribute": "Koordination",
+      "name": "Steuern",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 55,
+      "attribute": "Koordination",
+      "name": "Fingerfertigkeit",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 56,
+      "attribute": "Koordination",
+      "name": "Schlösser öffnen",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 57,
+      "attribute": "Koordination",
+      "name": "…",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 58,
+      "attribute": "Koordination",
+      "name": "…",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 61,
+      "attribute": "Stärke",
+      "name": "Schadensbonus",
+      "base": "+1",
+      "bonus": "1",
+      "total": ""
+    },
+    {
+      "row": 62,
+      "attribute": "Stärke",
+      "name": "Stich (auch K.Bogen)",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 63,
+      "attribute": "Stärke",
+      "name": "Klinge",
+      "base": "",
+      "bonus": "",
+      "total": "1"
+    },
+    {
+      "row": 64,
+      "attribute": "Stärke",
+      "name": "Wucht",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 65,
+      "attribute": "Stärke",
+      "name": "Ausdauer",
+      "base": "4W",
+      "bonus": "1",
+      "total": ""
+    },
+    {
+      "row": 66,
+      "attribute": "Stärke",
+      "name": "Rennen",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 67,
+      "attribute": "Stärke",
+      "name": "Schmerz",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 68,
+      "attribute": "Stärke",
+      "name": "Zechen",
+      "base": "",
+      "bonus": "",
+      "total": "1"
+    },
+    {
+      "row": 69,
+      "attribute": "Stärke",
+      "name": "Gift",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 70,
+      "attribute": "Stärke",
+      "name": "Maximale Trefferpunkte",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 71,
+      "attribute": "Stärke",
+      "name": "Heben",
+      "base": "4W",
+      "bonus": "1",
+      "total": ""
+    },
+    {
+      "row": 72,
+      "attribute": "Stärke",
+      "name": "kurzzeitig",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 73,
+      "attribute": "Stärke",
+      "name": "langzeitig",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 74,
+      "attribute": "Stärke",
+      "name": "Rennen",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 75,
+      "attribute": "Stärke",
+      "name": "Schwimmen",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 76,
+      "attribute": "Stärke",
+      "name": "…",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 77,
+      "attribute": "Stärke",
+      "name": "…",
+      "base": "4W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 80,
+      "attribute": "Wissen",
+      "name": "Schulwissen",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 81,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Fremdsprache)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 82,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. alte Sprache)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 83,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Mathematik)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 84,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Physik)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 85,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Chemie)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 86,
+      "attribute": "Wissen",
+      "name": "Handwerk",
+      "base": "3W",
+      "bonus": "1",
+      "total": ""
+    },
+    {
+      "row": 87,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Schmieden)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 88,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Schnitzen)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 89,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Lederarbeit)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 90,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "(z.B. Goldschmiedekunst)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 91,
+      "attribute": "Wissen",
+      "name": "Navigation",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 92,
+      "attribute": "Wissen",
+      "name": "Geschäftssinn",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 93,
+      "attribute": "Wissen",
+      "name": "Heilkunde",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 94,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 95,
+      "attribute": "Wissen",
+      "name": "…",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 98,
+      "attribute": "Wahrnehmung",
+      "name": "Überleben",
+      "base": "3W",
+      "bonus": "1",
+      "total": ""
+    },
+    {
+      "row": 99,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "(z.B. Spähen)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 100,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "(z.B. Spuren lesen)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 101,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "(z.B. Nachforschen)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 103,
+      "attribute": "Wahrnehmung",
+      "name": "schöne Künste",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 104,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "(z.B. Kochen)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 105,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "(z.B. Dichtung)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 106,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "(z.B. Musik)",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 108,
+      "attribute": "Wahrnehmung",
+      "name": "Spielen",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 109,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 110,
+      "attribute": "Wahrnehmung",
+      "name": "…",
+      "base": "3W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 113,
+      "attribute": "Ausstrahlung",
+      "name": "Betören",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 114,
+      "attribute": "Ausstrahlung",
+      "name": "Bedrohen",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 115,
+      "attribute": "Ausstrahlung",
+      "name": "Betrügen",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 116,
+      "attribute": "Ausstrahlung",
+      "name": "Verkleiden",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 117,
+      "attribute": "Ausstrahlung",
+      "name": "Kommandieren",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 118,
+      "attribute": "Ausstrahlung",
+      "name": "mentaler Widerstand",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 119,
+      "attribute": "Ausstrahlung",
+      "name": "…",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 120,
+      "attribute": "Ausstrahlung",
+      "name": "…",
+      "base": "2W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 123,
+      "attribute": "Magie",
+      "name": "magischen Wissen",
+      "base": "0W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 124,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 125,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 126,
+      "attribute": "Magie",
+      "name": "magische Kraft",
+      "base": "0W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 127,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 128,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 129,
+      "attribute": "Magie",
+      "name": "magische Konzentration",
+      "base": "0W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 130,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 131,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 132,
+      "attribute": "Magie",
+      "name": "magische Ausdauer",
+      "base": "0W",
+      "bonus": "0",
+      "total": ""
+    },
+    {
+      "row": 133,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    },
+    {
+      "row": 134,
+      "attribute": "Magie",
+      "name": "…",
+      "base": "",
+      "bonus": "",
+      "total": "0"
+    }
+  ],
+  "by_attribute": {
+    "Reflexe": [
+      {
+        "row": 34,
+        "attribute": "Reflexe",
+        "name": "unbewaffneter Kampf",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 37,
+        "attribute": "Reflexe",
+        "name": "bewaffneter Nahkampf",
+        "base": "4W",
+        "bonus": "2",
+        "total": ""
+      },
+      {
+        "row": 41,
+        "attribute": "Reflexe",
+        "name": "Akrobatik",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 42,
+        "attribute": "Reflexe",
+        "name": "Klettern",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 43,
+        "attribute": "Reflexe",
+        "name": "Springen",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 44,
+        "attribute": "Reflexe",
+        "name": "Reiten",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 45,
+        "attribute": "Reflexe",
+        "name": "Schleichen",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 46,
+        "attribute": "Reflexe",
+        "name": "…",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 47,
+        "attribute": "Reflexe",
+        "name": "…",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      }
+    ],
+    "Koordination": [
+      {
+        "row": 50,
+        "attribute": "Koordination",
+        "name": "Fernkampf",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 54,
+        "attribute": "Koordination",
+        "name": "Steuern",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 55,
+        "attribute": "Koordination",
+        "name": "Fingerfertigkeit",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 56,
+        "attribute": "Koordination",
+        "name": "Schlösser öffnen",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 57,
+        "attribute": "Koordination",
+        "name": "…",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 58,
+        "attribute": "Koordination",
+        "name": "…",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      }
+    ],
+    "Stärke": [
+      {
+        "row": 61,
+        "attribute": "Stärke",
+        "name": "Schadensbonus",
+        "base": "+1",
+        "bonus": "1",
+        "total": ""
+      },
+      {
+        "row": 62,
+        "attribute": "Stärke",
+        "name": "Stich (auch K.Bogen)",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 63,
+        "attribute": "Stärke",
+        "name": "Klinge",
+        "base": "",
+        "bonus": "",
+        "total": "1"
+      },
+      {
+        "row": 64,
+        "attribute": "Stärke",
+        "name": "Wucht",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 65,
+        "attribute": "Stärke",
+        "name": "Ausdauer",
+        "base": "4W",
+        "bonus": "1",
+        "total": ""
+      },
+      {
+        "row": 66,
+        "attribute": "Stärke",
+        "name": "Rennen",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 67,
+        "attribute": "Stärke",
+        "name": "Schmerz",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 68,
+        "attribute": "Stärke",
+        "name": "Zechen",
+        "base": "",
+        "bonus": "",
+        "total": "1"
+      },
+      {
+        "row": 69,
+        "attribute": "Stärke",
+        "name": "Gift",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 70,
+        "attribute": "Stärke",
+        "name": "Maximale Trefferpunkte",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 71,
+        "attribute": "Stärke",
+        "name": "Heben",
+        "base": "4W",
+        "bonus": "1",
+        "total": ""
+      },
+      {
+        "row": 72,
+        "attribute": "Stärke",
+        "name": "kurzzeitig",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 73,
+        "attribute": "Stärke",
+        "name": "langzeitig",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 74,
+        "attribute": "Stärke",
+        "name": "Rennen",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 75,
+        "attribute": "Stärke",
+        "name": "Schwimmen",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 76,
+        "attribute": "Stärke",
+        "name": "…",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 77,
+        "attribute": "Stärke",
+        "name": "…",
+        "base": "4W",
+        "bonus": "0",
+        "total": ""
+      }
+    ],
+    "Wissen": [
+      {
+        "row": 80,
+        "attribute": "Wissen",
+        "name": "Schulwissen",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 81,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Fremdsprache)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 82,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. alte Sprache)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 83,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Mathematik)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 84,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Physik)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 85,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Chemie)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 86,
+        "attribute": "Wissen",
+        "name": "Handwerk",
+        "base": "3W",
+        "bonus": "1",
+        "total": ""
+      },
+      {
+        "row": 87,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Schmieden)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 88,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Schnitzen)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 89,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Lederarbeit)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 90,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "(z.B. Goldschmiedekunst)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 91,
+        "attribute": "Wissen",
+        "name": "Navigation",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 92,
+        "attribute": "Wissen",
+        "name": "Geschäftssinn",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 93,
+        "attribute": "Wissen",
+        "name": "Heilkunde",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 94,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 95,
+        "attribute": "Wissen",
+        "name": "…",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      }
+    ],
+    "Wahrnehmung": [
+      {
+        "row": 98,
+        "attribute": "Wahrnehmung",
+        "name": "Überleben",
+        "base": "3W",
+        "bonus": "1",
+        "total": ""
+      },
+      {
+        "row": 99,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "(z.B. Spähen)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 100,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "(z.B. Spuren lesen)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 101,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "(z.B. Nachforschen)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 103,
+        "attribute": "Wahrnehmung",
+        "name": "schöne Künste",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 104,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "(z.B. Kochen)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 105,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "(z.B. Dichtung)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 106,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "(z.B. Musik)",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 108,
+        "attribute": "Wahrnehmung",
+        "name": "Spielen",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 109,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 110,
+        "attribute": "Wahrnehmung",
+        "name": "…",
+        "base": "3W",
+        "bonus": "0",
+        "total": ""
+      }
+    ],
+    "Ausstrahlung": [
+      {
+        "row": 113,
+        "attribute": "Ausstrahlung",
+        "name": "Betören",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 114,
+        "attribute": "Ausstrahlung",
+        "name": "Bedrohen",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 115,
+        "attribute": "Ausstrahlung",
+        "name": "Betrügen",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 116,
+        "attribute": "Ausstrahlung",
+        "name": "Verkleiden",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 117,
+        "attribute": "Ausstrahlung",
+        "name": "Kommandieren",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 118,
+        "attribute": "Ausstrahlung",
+        "name": "mentaler Widerstand",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 119,
+        "attribute": "Ausstrahlung",
+        "name": "…",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 120,
+        "attribute": "Ausstrahlung",
+        "name": "…",
+        "base": "2W",
+        "bonus": "0",
+        "total": ""
+      }
+    ],
+    "Magie": [
+      {
+        "row": 123,
+        "attribute": "Magie",
+        "name": "magischen Wissen",
+        "base": "0W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 124,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 125,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 126,
+        "attribute": "Magie",
+        "name": "magische Kraft",
+        "base": "0W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 127,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 128,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 129,
+        "attribute": "Magie",
+        "name": "magische Konzentration",
+        "base": "0W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 130,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 131,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 132,
+        "attribute": "Magie",
+        "name": "magische Ausdauer",
+        "base": "0W",
+        "bonus": "0",
+        "total": ""
+      },
+      {
+        "row": 133,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      },
+      {
+        "row": 134,
+        "attribute": "Magie",
+        "name": "…",
+        "base": "",
+        "bonus": "",
+        "total": "0"
+      }
+    ]
+  }
+}

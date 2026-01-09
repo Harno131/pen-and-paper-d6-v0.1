@@ -1,0 +1,51 @@
+[
+  {
+    "row": 10,
+    "name": "Reflexe",
+    "base": "2W",
+    "bonus": "2",
+    "total": ""
+  },
+  {
+    "row": 13,
+    "name": "Koordination",
+    "base": "2W",
+    "bonus": "1",
+    "total": ""
+  },
+  {
+    "row": 16,
+    "name": "Stärke",
+    "base": "2W",
+    "bonus": "2",
+    "total": ""
+  },
+  {
+    "row": 19,
+    "name": "Wissen",
+    "base": "2W",
+    "bonus": "1",
+    "total": ""
+  },
+  {
+    "row": 22,
+    "name": "Wahrnehmung",
+    "base": "2W",
+    "bonus": "1",
+    "total": ""
+  },
+  {
+    "row": 25,
+    "name": "Ausstrahlung",
+    "base": "2W",
+    "bonus": "0",
+    "total": ""
+  },
+  {
+    "row": 28,
+    "name": "Magie",
+    "base": "0W",
+    "bonus": "0",
+    "total": ""
+  }
+]

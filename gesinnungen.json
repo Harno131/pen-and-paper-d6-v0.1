@@ -1,0 +1,44 @@
+{
+  "row_0": [
+    {
+      "name": "Rechtschaffen Gut Lawful Good",
+      "description": "Neutral: Ein neutraler Charakter tut das, was er für eine gute Idee erachtet. Er fühlt sich zu keiner Seite besonders hingezogen, sei es in Bezug auf Gut und Böse bzw. auf Ordnung (Rechtschaffenheit) und Chaos, weshalb Neutral mitunter auch „Rein Neutral“ genannt wird. Die meisten neutralen Charaktere zeigen eher einen Mangel an Urteilsmaß oder Meinung, als dass sie sich für die Neutralität stark machen. Ein solcher Charakter hält das Gute für besser als das Böse – schließlich hat er lieber gute Nachbarn und Herrscher als böse. Dennoch wird er keine persönliche Verpflichtung darin sehen, das Gute in einer abstrakten und universellen Art hoch zu halten."
+    },
+    {
+      "name": "Neutral (Wahrhaft) Gut Neutral (True) Good",
+      "description": "Neutral: Ein neutraler Charakter tut das, was er für eine gute Idee erachtet. Er fühlt sich zu keiner Seite besonders hingezogen, sei es in Bezug auf Gut und Böse bzw. auf Ordnung (Rechtschaffenheit) und Chaos, weshalb Neutral mitunter auch „Rein Neutral“ genannt wird. Die meisten neutralen Charaktere zeigen eher einen Mangel an Urteilsmaß oder Meinung, als dass sie sich für die Neutralität stark machen. Ein solcher Charakter hält das Gute für besser als das Böse – schließlich hat er lieber gute Nachbarn und Herrscher als böse. Dennoch wird er keine persönliche Verpflichtung darin sehen, das Gute in einer abstrakten und universellen Art hoch zu halten."
+    },
+    {
+      "name": "Chaotisch Gut Chaotic Good",
+      "description": "Chaotisch neutral:Ein chaotisch neutraler Charakter folgt seinen Launen. Es ist in erster Linie ein Individualist. Er schätzt seine eigene Freiheit, setzt sich aber nicht für die Freiheit anderer ein. Er meidet die Obrigkeit, lehnt Einschränkungen ab und stellt Traditionen in Frage. Ein chaotisch neutraler Charakter arbeitet nicht vorsätzlich daran, Organisationen im Rahmen eines Feldzugs für die Anarchie zu stören. Um dies zu tun, müsste er entweder vom Guten (dem Verlangen andere zu befreien) oder Bösen (dem Verlangen, diejenigen leiden zu lassen, die anders sind als er selbst) angetrieben sein. Ein chaotisch neutraler Charakter mag zwar unberechenbar sein, aber sein Verhalten ist nicht völlig zufällig. Es ist wahrscheinlicher, dass er eine Brücke überquert, als dass er sich von einer solchen hinab stürzt."
+    }
+  ],
+  "row_1": [
+    {
+      "name": "(Wahrhaft) Rechtschaffen Neutral (True) Lawful Neutral",
+      "description": "Neutral: Ein neutraler Charakter tut das, was er für eine gute Idee erachtet. Er fühlt sich zu keiner Seite besonders hingezogen, sei es in Bezug auf Gut und Böse bzw. auf Ordnung (Rechtschaffenheit) und Chaos, weshalb Neutral mitunter auch „Rein Neutral“ genannt wird. Die meisten neutralen Charaktere zeigen eher einen Mangel an Urteilsmaß oder Meinung, als dass sie sich für die Neutralität stark machen. Ein solcher Charakter hält das Gute für besser als das Böse – schließlich hat er lieber gute Nachbarn und Herrscher als böse. Dennoch wird er keine persönliche Verpflichtung darin sehen, das Gute in einer abstrakten und universellen Art hoch zu halten."
+    },
+    {
+      "name": "-Neutral-",
+      "description": ""
+    },
+    {
+      "name": "(Wahrhaft) Chaotisch Neutral (True) Chaotic Neutral",
+      "description": "Chaotisch neutral:Ein chaotisch neutraler Charakter folgt seinen Launen. Es ist in erster Linie ein Individualist. Er schätzt seine eigene Freiheit, setzt sich aber nicht für die Freiheit anderer ein. Er meidet die Obrigkeit, lehnt Einschränkungen ab und stellt Traditionen in Frage. Ein chaotisch neutraler Charakter arbeitet nicht vorsätzlich daran, Organisationen im Rahmen eines Feldzugs für die Anarchie zu stören. Um dies zu tun, müsste er entweder vom Guten (dem Verlangen andere zu befreien) oder Bösen (dem Verlangen, diejenigen leiden zu lassen, die anders sind als er selbst) angetrieben sein. Ein chaotisch neutraler Charakter mag zwar unberechenbar sein, aber sein Verhalten ist nicht völlig zufällig. Es ist wahrscheinlicher, dass er eine Brücke überquert, als dass er sich von einer solchen hinab stürzt."
+    }
+  ],
+  "row_2": [
+    {
+      "name": "Rechtschaffen Böse Lawful Evil",
+      "description": "Chaotisch neutral:Ein chaotisch neutraler Charakter folgt seinen Launen. Es ist in erster Linie ein Individualist. Er schätzt seine eigene Freiheit, setzt sich aber nicht für die Freiheit anderer ein. Er meidet die Obrigkeit, lehnt Einschränkungen ab und stellt Traditionen in Frage. Ein chaotisch neutraler Charakter arbeitet nicht vorsätzlich daran, Organisationen im Rahmen eines Feldzugs für die Anarchie zu stören. Um dies zu tun, müsste er entweder vom Guten (dem Verlangen andere zu befreien) oder Bösen (dem Verlangen, diejenigen leiden zu lassen, die anders sind als er selbst) angetrieben sein. Ein chaotisch neutraler Charakter mag zwar unberechenbar sein, aber sein Verhalten ist nicht völlig zufällig. Es ist wahrscheinlicher, dass er eine Brücke überquert, als dass er sich von einer solchen hinab stürzt."
+    },
+    {
+      "name": "Neutral (Wahrhaft) Böse Neutral (True) Evil",
+      "description": "Neutral: Ein neutraler Charakter tut das, was er für eine gute Idee erachtet. Er fühlt sich zu keiner Seite besonders hingezogen, sei es in Bezug auf Gut und Böse bzw. auf Ordnung (Rechtschaffenheit) und Chaos, weshalb Neutral mitunter auch „Rein Neutral“ genannt wird. Die meisten neutralen Charaktere zeigen eher einen Mangel an Urteilsmaß oder Meinung, als dass sie sich für die Neutralität stark machen. Ein solcher Charakter hält das Gute für besser als das Böse – schließlich hat er lieber gute Nachbarn und Herrscher als böse. Dennoch wird er keine persönliche Verpflichtung darin sehen, das Gute in einer abstrakten und universellen Art hoch zu halten."
+    },
+    {
+      "name": "Chaotisch Böse Chaotic Evil",
+      "description": "Chaotisch neutral:Ein chaotisch neutraler Charakter folgt seinen Launen. Es ist in erster Linie ein Individualist. Er schätzt seine eigene Freiheit, setzt sich aber nicht für die Freiheit anderer ein. Er meidet die Obrigkeit, lehnt Einschränkungen ab und stellt Traditionen in Frage. Ein chaotisch neutraler Charakter arbeitet nicht vorsätzlich daran, Organisationen im Rahmen eines Feldzugs für die Anarchie zu stören. Um dies zu tun, müsste er entweder vom Guten (dem Verlangen andere zu befreien) oder Bösen (dem Verlangen, diejenigen leiden zu lassen, die anders sind als er selbst) angetrieben sein. Ein chaotisch neutraler Charakter mag zwar unberechenbar sein, aber sein Verhalten ist nicht völlig zufällig. Es ist wahrscheinlicher, dass er eine Brücke überquert, als dass er sich von einer solchen hinab stürzt."
+    }
+  ]
+}
