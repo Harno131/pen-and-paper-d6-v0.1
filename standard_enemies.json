@@ -1,0 +1,361 @@
+[
+  {
+    "name": "Gischt-Zombie",
+    "type": "Untoter",
+    "level": 1,
+    "race": "Untoter",
+    "description": "Ein von der Gischt wiederbelebter Leichnam, dessen Körper von feuchtem Nebel durchdrungen ist.",
+    "attributes": {
+      "Reflexe": "1D",
+      "Koordination": "1D",
+      "Stärke": "3D",
+      "Wissen": "0D",
+      "Wahrnehmung": "2D",
+      "Ausstrahlung": "0D",
+      "Magie": "0D"
+    },
+    "skills": [
+      {
+        "name": "unbewaffneter Kampf",
+        "attribute": "Reflexe",
+        "bonusDice": 1,
+        "specializations": [],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [],
+    "maxHP": 25,
+    "currentHP": 25,
+    "fallcrestTwist": "Der Gischt-Zombie tropft ständig feuchten Nebel. Wenn er getroffen wird, explodiert er in einer Wolke aus Gischt, die alle in 2 Metern Entfernung für 1 Runde benebelt (Wahrnehmung -1D). Der Nebel riecht nach verrottendem Seetang und Artefakt-Energie."
+  },
+  {
+    "name": "Dunst-Spinne",
+    "type": "Bestie",
+    "level": 1,
+    "race": "Riesenspinne",
+    "description": "Eine große Spinne, die im magischen Dunst von Fallcrest lebt und dessen Energie in ihrem Gift speichert.",
+    "attributes": {
+      "Reflexe": "3D",
+      "Koordination": "3D",
+      "Stärke": "2D",
+      "Wissen": "1D",
+      "Wahrnehmung": "4D",
+      "Ausstrahlung": "0D",
+      "Magie": "1D"
+    },
+    "skills": [
+      {
+        "name": "unbewaffneter Kampf",
+        "attribute": "Reflexe",
+        "bonusDice": 1,
+        "specializations": [
+          {
+            "id": "bite",
+            "name": "Giftbiss",
+            "skillName": "unbewaffneter Kampf",
+            "blibs": 2
+          }
+        ],
+        "isWeakened": false
+      },
+      {
+        "name": "Schleichen",
+        "attribute": "Reflexe",
+        "bonusDice": 2,
+        "specializations": [],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [],
+    "maxHP": 20,
+    "currentHP": 20,
+    "fallcrestTwist": "Das Gift der Dunst-Spinne enthält magische Partikel aus dem Fallcrest-Nebel. Opfer, die vom Gift getroffen werden, sehen für 1d6 Runden Visionen von versunkenen Artefakten und hören das Rauschen unsichtbarer Wellen. Zusätzlich zum normalen Gift-Schaden."
+  },
+  {
+    "name": "Nebel-Bandit",
+    "type": "Humanoid",
+    "level": 1,
+    "race": "Mensch",
+    "description": "Ein Straßenräuber, der die nebligen Gassen von Fallcrest nutzt, um Reisende zu überfallen.",
+    "attributes": {
+      "Reflexe": "3D",
+      "Koordination": "2D",
+      "Stärke": "2D",
+      "Wissen": "1D",
+      "Wahrnehmung": "2D",
+      "Ausstrahlung": "2D",
+      "Magie": "0D"
+    },
+    "skills": [
+      {
+        "name": "bewaffneter Nahkampf",
+        "attribute": "Reflexe",
+        "bonusDice": 1,
+        "specializations": [],
+        "isWeakened": false
+      },
+      {
+        "name": "Schleichen",
+        "attribute": "Reflexe",
+        "bonusDice": 1,
+        "specializations": [],
+        "isWeakened": false
+      },
+      {
+        "name": "Betrügen",
+        "attribute": "Ausstrahlung",
+        "bonusDice": 1,
+        "specializations": [],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [
+      {
+        "id": "dagger",
+        "name": "Dolch",
+        "category": "weapon",
+        "damageDice": "1D",
+        "hitDice": "3D"
+      },
+      {
+        "id": "leather",
+        "name": "Lederrüstung",
+        "category": "armor",
+        "damageReduction": "1"
+      }
+    ],
+    "maxHP": 18,
+    "currentHP": 18,
+    "fallcrestTwist": "Der Nebel-Bandit trägt ein kleines Artefakt (ein 'Nebel-Amulett'), das ihm erlaubt, sich für 1 Runde pro Kampf im Nebel zu verstecken, als wäre er unsichtbar. Er nutzt dies, um Überraschungsangriffe zu landen (+2D auf den ersten Angriff)."
+  },
+  {
+    "name": "Artefakt-Wächter",
+    "type": "Konstrukt",
+    "level": 2,
+    "race": "Magisches Konstrukt",
+    "description": "Ein von alten Magiern geschaffener Wächter, der Artefakte in den Ruinen von Fallcrest beschützt.",
+    "attributes": {
+      "Reflexe": "2D",
+      "Koordination": "2D",
+      "Stärke": "4D",
+      "Wissen": "2D",
+      "Wahrnehmung": "3D",
+      "Ausstrahlung": "0D",
+      "Magie": "3D"
+    },
+    "skills": [
+      {
+        "name": "bewaffneter Nahkampf",
+        "attribute": "Reflexe",
+        "bonusDice": 2,
+        "specializations": [],
+        "isWeakened": false
+      },
+      {
+        "name": "magische Kraft",
+        "attribute": "Magie",
+        "bonusDice": 1,
+        "specializations": [
+          {
+            "id": "shield",
+            "name": "Schutzschild",
+            "skillName": "magische Kraft",
+            "blibs": 2
+          }
+        ],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [
+      {
+        "id": "sword",
+        "name": "Magisches Schwert",
+        "category": "weapon",
+        "damageDice": "2D",
+        "hitDice": "4D"
+      },
+      {
+        "id": "plate",
+        "name": "Magische Plattenrüstung",
+        "category": "armor",
+        "damageReduction": "3"
+      }
+    ],
+    "maxHP": 40,
+    "currentHP": 40,
+    "fallcrestTwist": "Der Artefakt-Wächter ist mit einem Fragment eines versunkenen Fallcrest-Artefakts verbunden. Wenn er unter 50% HP fällt, aktiviert sich ein Nebel-Schutzschild, der alle Angriffe um 1D reduziert. Zusätzlich kann er einmal pro Kampf einen 'Gischt-Strahl' abfeuern (Fernkampf, 3D Schaden, Reichweite 10m)."
+  },
+  {
+    "name": "Nass-Geist",
+    "type": "Geist",
+    "level": 2,
+    "race": "Geist",
+    "description": "Ein Geist, der im feuchten Nebel von Fallcrest gefangen ist und nach Erlösung sucht.",
+    "attributes": {
+      "Reflexe": "3D",
+      "Koordination": "2D",
+      "Stärke": "1D",
+      "Wissen": "2D",
+      "Wahrnehmung": "4D",
+      "Ausstrahlung": "3D",
+      "Magie": "3D"
+    },
+    "skills": [
+      {
+        "name": "Betören",
+        "attribute": "Ausstrahlung",
+        "bonusDice": 2,
+        "specializations": [],
+        "isWeakened": false
+      },
+      {
+        "name": "magische Kraft",
+        "attribute": "Magie",
+        "bonusDice": 1,
+        "specializations": [
+          {
+            "id": "mist",
+            "name": "Nebel-Beschwörung",
+            "skillName": "magische Kraft",
+            "blibs": 3
+          }
+        ],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [],
+    "maxHP": 30,
+    "currentHP": 30,
+    "fallcrestTwist": "Der Nass-Geist kann sich in Nebel auflösen und durch kleine Öffnungen schlüpfen. Er hinterlässt überall feuchte Spuren. Wenn er einen Charakter berührt, fühlt dieser sich, als würde er ertrinken (1 Runde lang -1D auf alle Aktionen). Der Geist kann nur durch die Rückgabe eines gestohlenen Artefakts oder durch eine Reinigungszeremonie mit Fallcrest-Wasser erlöst werden."
+  },
+  {
+    "name": "Dunst-Kobold",
+    "type": "Humanoid",
+    "level": 1,
+    "race": "Kobold",
+    "description": "Ein kleiner, listiger Kobold, der die Nebelgassen von Fallcrest als Versteck nutzt.",
+    "attributes": {
+      "Reflexe": "3D",
+      "Koordination": "3D",
+      "Stärke": "1D",
+      "Wissen": "1D",
+      "Wahrnehmung": "3D",
+      "Ausstrahlung": "1D",
+      "Magie": "0D"
+    },
+    "skills": [
+      {
+        "name": "Fernkampf",
+        "attribute": "Koordination",
+        "bonusDice": 1,
+        "specializations": [],
+        "isWeakened": false
+      },
+      {
+        "name": "Schleichen",
+        "attribute": "Reflexe",
+        "bonusDice": 2,
+        "specializations": [],
+        "isWeakened": false
+      },
+      {
+        "name": "Fingerfertigkeit",
+        "attribute": "Koordination",
+        "bonusDice": 1,
+        "specializations": [],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [
+      {
+        "id": "sling",
+        "name": "Schleuder",
+        "category": "weapon",
+        "damageDice": "1D",
+        "hitDice": "4D"
+      }
+    ],
+    "maxHP": 12,
+    "currentHP": 12,
+    "fallcrestTwist": "Der Dunst-Kobold sammelt kleine Artefakt-Fragmente und wirft sie mit seiner Schleuder. Wenn ein Fragment trifft, explodiert es in einer kleinen Nebelwolke (1m Radius), die für 1 Runde die Sicht blockiert. Der Kobold nutzt dies, um zu fliehen oder Überraschungsangriffe zu landen."
+  },
+  {
+    "name": "Gischt-Schleim",
+    "type": "Ooze",
+    "level": 1,
+    "race": "Schleim",
+    "description": "Ein magischer Schleim, der aus dem feuchten Nebel von Fallcrest entstanden ist und Artefakt-Energie absorbiert.",
+    "attributes": {
+      "Reflexe": "1D",
+      "Koordination": "1D",
+      "Stärke": "2D",
+      "Wissen": "0D",
+      "Wahrnehmung": "2D",
+      "Ausstrahlung": "0D",
+      "Magie": "2D"
+    },
+    "skills": [
+      {
+        "name": "unbewaffneter Kampf",
+        "attribute": "Reflexe",
+        "bonusDice": 0,
+        "specializations": [
+          {
+            "id": "dissolve",
+            "name": "Auflösen",
+            "skillName": "unbewaffneter Kampf",
+            "blibs": 2
+          }
+        ],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [],
+    "maxHP": 22,
+    "currentHP": 22,
+    "fallcrestTwist": "Der Gischt-Schleim wird von magischen Artefakten angezogen. Wenn ein Charakter ein Artefakt bei sich trägt, bewegt sich der Schleim doppelt so schnell auf ihn zu. Wenn der Schleim ein Artefakt berührt, absorbiert er dessen Energie und wird größer (+5 HP, +1D auf alle Attribute für den Rest des Kampfes). Zerstörte Artefakte können nicht wiederhergestellt werden."
+  },
+  {
+    "name": "Nebel-Wolf",
+    "type": "Bestie",
+    "level": 2,
+    "race": "Wolf",
+    "description": "Ein großer Wolf, dessen Fell den Nebel von Fallcrest reflektiert und der in Rudeln jagt.",
+    "attributes": {
+      "Reflexe": "4D",
+      "Koordination": "3D",
+      "Stärke": "3D",
+      "Wissen": "1D",
+      "Wahrnehmung": "4D",
+      "Ausstrahlung": "1D",
+      "Magie": "0D"
+    },
+    "skills": [
+      {
+        "name": "unbewaffneter Kampf",
+        "attribute": "Reflexe",
+        "bonusDice": 2,
+        "specializations": [
+          {
+            "id": "pack",
+            "name": "Rudelangriff",
+            "skillName": "unbewaffneter Kampf",
+            "blibs": 2
+          }
+        ],
+        "isWeakened": false
+      },
+      {
+        "name": "Überleben",
+        "attribute": "Wahrnehmung",
+        "bonusDice": 2,
+        "specializations": [],
+        "isWeakened": false
+      }
+    ],
+    "inventory": [],
+    "maxHP": 35,
+    "currentHP": 35,
+    "fallcrestTwist": "Nebel-Wölfe jagen immer im Rudel (mindestens 2-3). Sie nutzen den Nebel, um sich zu tarnen (+2D auf Schleichen im Nebel). Wenn ein Wolf einen Gegner packt, können andere Wölfe des Rudels einen Bonus-Angriff (+1D) auf denselben Gegner machen. Ihre Augen leuchten im Nebel wie kleine Artefakt-Fragmente."
+  }
+]

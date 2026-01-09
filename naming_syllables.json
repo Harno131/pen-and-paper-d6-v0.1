@@ -1,0 +1,87 @@
+{
+  "human": {
+    "male": {
+      "prefix": ["Al", "Ber", "Ced", "Dorn", "Ead", "Fal", "Gar", "Hend", "Is", "Jor", "Kael", "Lud", "Morg", "Os", "Quinn", "Roder", "Stan", "Thal", "Ul", "Vict"],
+      "suffix": ["ic", "ard", "on", "ric", "win", "ert", "hold", "man", "as", "or", "ius", "and", "mund", "bald", "mar"]
+    },
+    "female": {
+      "prefix": ["An", "Bel", "Clara", "Dora", "El", "Fay", "Gwen", "Hild", "Ida", "Juna", "Kira", "Lia", "Morg", "Nora", "Opal", "Petra", "Ria", "Sela", "Thea", "Val"],
+      "suffix": ["a", "ina", "ette", "ia", "lyn", "wen", "bel", "ne", "ra", "lis", "th", "wyn", "da", "ris", "mira"]
+    }
+  },
+  "elf": {
+    "male": {
+      "prefix": ["Ae", "Cala", "Elen", "Fae", "Gala", "Hala", "Iri", "Lari", "Mela", "Naer", "Olo", "Quae", "Rael", "Sila", "Thala", "Vara", "Yen", "Zun"],
+      "suffix": ["rion", "thin", "lis", "nal", "dor", "ion", "las", "mil", "ar", "en", "van", "il", "thir"]
+    },
+    "female": {
+      "prefix": ["Aema", "Caer", "Elva", "Faen", "Glyn", "Hala", "Iril", "Lari", "Mela", "Naer", "Olo", "Phay", "Rael", "Sila", "Thala", "Vara", "Yae", "Zun"],
+      "suffix": ["riel", "nia", "wyn", "thae", "la", "eth", "wen", "mne", "ra", "lis", "shara", "vail", "ndra"]
+    }
+  },
+  "dwarf": {
+    "male": {
+      "prefix": ["Bara", "Dwal", "Gorn", "Hroth", "Krag", "Morn", "Thror", "Ulf", "Vorn", "Zorn", "Durg", "Grum", "Brak", "Thrum", "Khar"],
+      "suffix": ["in", "ur", "on", "ak", "ar", "im", "or", "li", "grim", "mund", "dar", "gan", "garn"]
+    },
+    "female": {
+      "prefix": ["Bari", "Dwal", "Gora", "Hul", "Krag", "Morn", "Thra", "Ula", "Vora", "Zora", "Durn", "Gruma", "Brak", "Thrun"],
+      "suffix": ["da", "ra", "na", "in", "is", "li", "hild", "ga", "mura", "la", "dis", "gret", "wyn"]
+    }
+  },
+  "halfling": {
+    "male": {
+      "prefix": ["And", "Cade", "Finn", "Gar", "Lind", "Milo", "Os", "Perr", "Reed", "Ros", "Theo", "Wel"],
+      "suffix": ["an", "in", "ry", "ret", "dal", "bo", "co", "don", "by", "ace"]
+    },
+    "female": {
+      "prefix": ["Bree", "Callie", "Cora", "Euphe", "Jill", "Kith", "Lavi", "Mer", "Ned", "Paela", "Port", "Verna"],
+      "suffix": ["a", "lee", "ri", "mia", "da", "ra", "na", "wyn", "sha", "ca"]
+    }
+  },
+  "halforc": {
+    "male": {
+      "prefix": ["Dench", "Feng", "Gell", "Henk", "Holg", "Imsh", "Keth", "Krusk", "Mhur", "Ront", "Thokk", "Zark"],
+      "suffix": ["er", "ar", "og", "ath", "uhm", "ur", "ok", "ash", "org"]
+    },
+    "female": {
+      "prefix": ["Baggi", "Emen", "Engong", "Kansif", "Myev", "Neega", "Ovak", "Ownka", "Shaut", "Vola", "Volen", "Yevel"],
+      "suffix": ["a", "da", "ga", "ra", "tha", "ne", "kah", "muh"]
+    }
+  },
+  "gnome": {
+    "male": {
+      "prefix": ["Al", "Bodd", "Brocc", "Burg", "Dim", "Eld", "Fon", "Glim", "Ger", "Nam", "Orn", "Roen", "Wrenn", "Zook"],
+      "suffix": ["wick", "er", "in", "aby", "byn", "op", "en", "ard", "le", "it", "ick", "ock"]
+    },
+    "female": {
+      "prefix": ["Bimp", "Breena", "Carl", "Don", "Ella", "Lilli", "Loop", "Nissa", "Nyx", "Oda", "Orla", "Roy", "Tana", "Zanna"],
+      "suffix": ["in", "ny", "elle", "si", "da", "ra", "le", "by", "wyn", "ca", "na"]
+    }
+  },
+  "human_surnames": {
+    "type": "compound",
+    "part1": ["Sturm", "Gischt", "Silber", "Nebel", "Stein", "Fluss", "Eisen", "Regen", "Licht", "Schatten", "Mond", "Prismen", "Glanz", "Fels", "Wind"],
+    "part2": ["fels", "hall", "born", "bach", "wacht", "wald", "schmied", "bringer", "läufer", "wehr", "auge", "hand", "stein", "pfad", "krone"]
+  },
+  "elf_surnames": {
+    "type": "melodic",
+    "part1": ["Aela", "Caer", "Gala", "Lari", "Mela", "Naer", "Phay", "Sila", "Thal", "Vara"],
+    "part2": ["nnis", "thir", "mon", "del", "vail", "wyn", "ria", "lis", "nal", "rdan"]
+  },
+  "dwarf_surnames": {
+    "type": "clan",
+    "part1": ["Eisen", "Gold", "Stein", "Hammer", "Axt", "Bart", "Stahl", "Fels", "Erzt", "Tief"],
+    "part2": ["faust", "amboss", "schild", "brecher", "gräber", "schmied", "beißer", "halle", "zorn", "helm"]
+  },
+  "halfling_surnames": {
+    "type": "cozy",
+    "part1": ["Nass", "Bar", "Pfützen", "Grün", "Teewege", "Unter", "Klein", "Sanft", "Woll", "Apfel"],
+    "part2": ["fuß", "hümpfer", "hügel", "blatt", "tal", "beutel", "docht", "wind", "kuchen", "zweig"]
+  },
+  "gnome_surnames": {
+    "type": "inventor",
+    "part1": ["Zahn", "Funk", "Dampf", "Kupfer", "Hebe", "Glitzer", "Knall", "Feder", "Rohr", "Öl"],
+    "part2": ["rad", "sprung", "kessel", "bolzen", "schlüssel", "staub", "hammer", "draht", "zange", "licht"]
+  }
+}

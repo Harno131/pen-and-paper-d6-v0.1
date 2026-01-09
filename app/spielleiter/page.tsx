@@ -30,6 +30,8 @@ import { calculateSkillValue } from '@/lib/skills'
 import { formatD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getMonthInfo, getWeekdayInfo, TIMES_OF_DAY } from '@/lib/fantasy-calendar'
 import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
+import NameGenerator from '@/components/NameGenerator'
+import NpcCreationExtended from '@/components/NpcCreationExtended'
 
 export default function SpielleiterPage() {
   const router = useRouter()
@@ -41,14 +43,19 @@ export default function SpielleiterPage() {
   const [diceRolls, setDiceRolls] = useState<DiceRoll[]>([])
   const [newJournalEntry, setNewJournalEntry] = useState({ title: '', content: '' })
   const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<string>('Mittag')
+  const [selectedAuthor, setSelectedAuthor] = useState<string>('')
+  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
   const [newImage, setNewImage] = useState({ title: '', description: '', url: '' })
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
-  const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false })
+  const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [settings, setSettings] = useState<CharacterCreationSettings>(getCharacterCreationSettings())
   const [hiddenCharacters, setHiddenCharacters] = useState<Set<string>>(new Set())
   const [groupMembers, setGroupMembers] = useState<any[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [groupId, setGroupId] = useState<string | null>(null)
+  const [showNpcCreation, setShowNpcCreation] = useState(false)
+  const [editingNpc, setEditingNpc] = useState<Character | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -84,7 +91,11 @@ export default function SpielleiterPage() {
   }
 
   const loadData = async () => {
-    setCharacters(getCharacters())
+    // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
+    const { getCharactersAsync } = await import('@/lib/data')
+    const allCharacters = await getCharactersAsync()
+    setCharacters(allCharacters)
+    
     setDeletedCharacters(getDeletedCharacters())
     const entries = await getJournalEntries()
     setJournalEntries(entries)
@@ -94,11 +105,21 @@ export default function SpielleiterPage() {
     setSettings(getCharacterCreationSettings())
     
     // Lade Gruppenmitglieder
-    if (groupId) {
-      const members = await getGroupMembers(groupId)
+    const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
+    if (currentGroupId) {
+      const members = await getGroupMembers(currentGroupId)
       setGroupMembers(members)
     }
   }
+
+  // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadData()
+    }, 5000) // Alle 5 Sekunden
+
+    return () => clearInterval(interval)
+  }, [groupId])
 
   const handleRestoreCharacter = (characterId: string) => {
     if (restoreCharacter(characterId)) {
@@ -143,7 +164,7 @@ export default function SpielleiterPage() {
   }
 
   const handleAddJournalEntry = async () => {
-    if (!newJournalEntry.title.trim() || !newJournalEntry.content.trim()) return
+    if (!newJournalEntry.content.trim()) return
 
     const now = new Date()
     
@@ -160,20 +181,63 @@ export default function SpielleiterPage() {
       fantasyDate = realDateToFantasyDate(now)
     }
 
+    // Bestimme Autor
+    let author = 'Spielleiter'
+    let characterId: string | undefined = undefined
+    
+    if (selectedAuthor) {
+      if (selectedAuthor === 'spielleiter') {
+        const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
+        author = playerName || 'Spielleiter'
+      } else {
+        // Prüfe ob es ein Charakter ist
+        const character = characters.find(c => c.id === selectedAuthor)
+        if (character) {
+          author = character.name
+          characterId = character.id
+        } else {
+          author = selectedAuthor
+        }
+      }
+    } else {
+      // Fallback: Spielleiter-Name aus localStorage
+      const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
+      author = playerName || 'Spielleiter'
+    }
+
+    // Extrahiere Titel aus Content (alles vor dem ersten Doppelpunkt)
+    const contentParts = newJournalEntry.content.split(':')
+    const title = contentParts.length > 1 ? contentParts[0].trim() : 'Eintrag'
+    const content = contentParts.length > 1 ? contentParts.slice(1).join(':').trim() : newJournalEntry.content.trim()
+
     const entry: JournalEntry = {
-      id: Date.now().toString(),
-      author: 'Spielleiter',
-      title: newJournalEntry.title,
-      content: newJournalEntry.content,
-      timestamp: now,
+      id: editingEntry?.id || Date.now().toString(),
+      author,
+      characterId,
+      title,
+      content,
+      timestamp: editingEntry?.timestamp || now,
       fantasyDate,
       timeOfDay: selectedTimeOfDay as any,
     }
 
-    const entries = [...journalEntries, entry]
-    setJournalEntries(entries)
-    await saveJournalEntry(entry)
+    if (editingEntry) {
+      // Aktualisiere bestehenden Eintrag
+      const updatedEntries = journalEntries.map(e => e.id === editingEntry.id ? entry : e)
+      setJournalEntries(updatedEntries)
+      // Speichere in Supabase/localStorage
+      await saveJournalEntry(entry)
+      setEditingEntry(null)
+    } else {
+      // Neuer Eintrag
+      const entries = [...journalEntries, entry]
+      setJournalEntries(entries)
+      await saveJournalEntry(entry)
+    }
+    
     setNewJournalEntry({ title: '', content: '' })
+    setSelectedAuthor('')
+    setSelectedTimeOfDay('Mittag')
   }
 
   const updateCharacterAttribute = (
@@ -309,75 +373,757 @@ export default function SpielleiterPage() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* NPC hinzufügen */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <h2 className="text-2xl font-bold text-white mb-4">NPC hinzufügen</h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <input
-                  type="text"
-                  placeholder="NPC-Name"
-                  id="npcName"
-                  className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
-                <select
-                  id="npcType"
-                  className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
-                >
-                  <option value="händler">Händler</option>
-                  <option value="stadtwache">Stadtwache</option>
-                  <option value="monster">Monster</option>
-                  <option value="sonstiges">Sonstiges</option>
-                </select>
-                <button
-                  onClick={() => {
-                    const nameInput = document.getElementById('npcName') as HTMLInputElement
-                    const typeInput = document.getElementById('npcType') as HTMLSelectElement
-                    
-                    if (nameInput && nameInput.value.trim()) {
-                      const npc: Character = {
-                        id: `npc-${Date.now()}`,
-                        name: nameInput.value.trim(),
-                        playerName: 'NPC',
-                        isNPC: true,
-                        npcType: typeInput.value as any,
-                        attributes: {
-                          Reflexe: '2D',
-                          Koordination: '2D',
-                          Stärke: '2D',
-                          Wissen: '2D',
-                          Wahrnehmung: '2D',
-                          Ausstrahlung: '2D',
-                          Magie: '0D',
-                        },
-                        skills: [],
-                        inventory: [],
-                        level: 1,
-                      }
-                      const updated = [...characters, npc]
-                      setCharacters(updated)
-                      saveCharacters(updated)
-                      nameInput.value = ''
-                    }
-                  }}
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
-                >
-                  + NPC hinzufügen
-                </button>
+            <div className="space-y-4">
+              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-white" style={{ fontSize: 'calc(1.5rem * var(--app-scale, 1))' }}>
+                    NPCs verwalten
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setEditingNpc(null)
+                      setShowNpcCreation(true)
+                    }}
+                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary-500/50 backdrop-blur-sm"
+                    style={{ fontSize: 'calc(1rem * var(--app-scale, 1))' }}
+                  >
+                    + Neuer NPC
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Fertigkeiten-Tabelle */}
+            {/* Charaktere-Übersicht - ZUERST */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <h2 className="text-2xl font-bold text-white mb-4">Fertigkeiten-Übersicht</h2>
-              <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+              <h2 className="text-2xl font-bold text-white mb-4">Charaktere-Übersicht</h2>
+              <div className="overflow-x-auto">
               {(() => {
-                // Filtere nur Charaktere der aktuellen Gruppe
                 const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
+                // Filtere Standard-Spieler raus: Kobi, Julia, JJ, Georg
                 const groupCharacters = (groupId 
                   ? characters.filter(char => {
                       return true
                     })
                   : characters
-                ).filter(char => !char.deletedDate)
+                ).filter(char => 
+                  !char.deletedDate && 
+                  char.playerName !== 'Kobi' && 
+                  char.playerName !== 'Julia' && 
+                  char.playerName !== 'JJ' && 
+                  char.playerName !== 'Georg'
+                )
+                
+                if (groupCharacters.length === 0) {
+                  return <p className="text-white/70">Noch keine Charaktere in dieser Gruppe vorhanden.</p>
+                }
+                
+                // Gruppiere Charaktere nach Spieler
+                const charactersByPlayer = new Map<string, Character[]>()
+                groupCharacters.forEach(char => {
+                  const player = char.playerName
+                  if (!charactersByPlayer.has(player)) {
+                    charactersByPlayer.set(player, [])
+                  }
+                  charactersByPlayer.get(player)!.push(char)
+                })
+                
+                const visibleCharacters = groupCharacters.filter(char => !hiddenCharacters.has(char.id))
+                const hiddenChars = groupCharacters.filter(char => hiddenCharacters.has(char.id))
+                
+                // Funktion zum Erstellen von Initialen
+                const getInitials = (name: string) => {
+                  return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+                }
+
+                // Hilfsfunktion: Finde Nahkampfwaffe
+                const getMeleeWeapon = (char: Character) => {
+                  const weapons = char.inventory.filter(item => 
+                    item.category === 'weapon' || 
+                    item.name.toLowerCase().includes('waffe') || 
+                    item.name.toLowerCase().includes('schwert') ||
+                    item.name.toLowerCase().includes('dolch') ||
+                    item.name.toLowerCase().includes('hammer') ||
+                    item.name.toLowerCase().includes('stab') ||
+                    item.name.toLowerCase().includes('axt') ||
+                    item.name.toLowerCase().includes('speer')
+                  )
+                  // Filtere Fernkampfwaffen raus
+                  const meleeWeapons = weapons.filter(w => 
+                    !w.name.toLowerCase().includes('bogen') &&
+                    !w.name.toLowerCase().includes('wurf') &&
+                    !w.name.toLowerCase().includes('schleuder')
+                  )
+                  return meleeWeapons[0] || null
+                }
+
+                // Hilfsfunktion: Finde Fernkampfwaffe
+                const getRangedWeapon = (char: Character) => {
+                  const weapons = char.inventory.filter(item => 
+                    item.category === 'weapon' || 
+                    item.name.toLowerCase().includes('bogen') ||
+                    item.name.toLowerCase().includes('wurf') ||
+                    item.name.toLowerCase().includes('schleuder') ||
+                    item.name.toLowerCase().includes('armbrust')
+                  )
+                  return weapons[0] || null
+                }
+
+                // Hilfsfunktion: Finde Rüstung
+                const getArmor = (char: Character) => {
+                  const armor = char.inventory.filter(item => 
+                    item.category === 'armor' || 
+                    item.name.toLowerCase().includes('rüstung') || 
+                    item.name.toLowerCase().includes('panzer') ||
+                    item.name.toLowerCase().includes('schild') ||
+                    item.name.toLowerCase().includes('helm') ||
+                    item.name.toLowerCase().includes('brustpanzer')
+                  )
+                  return armor[0] || null
+                }
+
+                // Hilfsfunktion: Finde Ausweichen-Fertigkeit
+                const getDodgeSkill = (char: Character) => {
+                  // Suche nach "Ausweichen" oder ähnlichen Fertigkeiten
+                  const dodgeSkill = char.skills.find(skill => 
+                    skill.name.toLowerCase().includes('ausweichen') ||
+                    skill.name.toLowerCase().includes('akrobatik')
+                  )
+                  if (dodgeSkill) {
+                    const attributeValue = char.attributes[dodgeSkill.attribute] || '1D'
+                    const isLearned = dodgeSkill.bonusDice > 0 || (dodgeSkill.specializations && dodgeSkill.specializations.some(s => s.blibs > 0))
+                    const skillBlibs = dodgeSkill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                    const skillDiceFormula = calculateSkillValue(
+                      attributeValue,
+                      dodgeSkill.bonusDice,
+                      skillBlibs,
+                      dodgeSkill.isWeakened,
+                      isLearned
+                    )
+                    return skillDiceFormula
+                  }
+                  return null
+                }
+
+                // Hilfsfunktion: Finde Nahkampf-Fertigkeit (für Trefferwürfel)
+                const getMeleeSkill = (char: Character) => {
+                  const meleeSkill = char.skills.find(skill => 
+                    skill.name === 'bewaffneter Nahkampf' ||
+                    skill.name === 'unbewaffneter Kampf'
+                  )
+                  if (meleeSkill) {
+                    const attributeValue = char.attributes[meleeSkill.attribute] || '1D'
+                    const isLearned = meleeSkill.bonusDice > 0 || (meleeSkill.specializations && meleeSkill.specializations.some(s => s.blibs > 0))
+                    const skillBlibs = meleeSkill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                    const skillDiceFormula = calculateSkillValue(
+                      attributeValue,
+                      meleeSkill.bonusDice,
+                      skillBlibs,
+                      meleeSkill.isWeakened,
+                      isLearned
+                    )
+                    return skillDiceFormula
+                  }
+                  return null
+                }
+
+                // Hilfsfunktion: Finde Fernkampf-Fertigkeit (für Trefferwürfel)
+                const getRangedSkill = (char: Character) => {
+                  const rangedSkill = char.skills.find(skill => 
+                    skill.name === 'Fernkampf'
+                  )
+                  if (rangedSkill) {
+                    const attributeValue = char.attributes[rangedSkill.attribute] || '1D'
+                    const isLearned = rangedSkill.bonusDice > 0 || (rangedSkill.specializations && rangedSkill.specializations.some(s => s.blibs > 0))
+                    const skillBlibs = rangedSkill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                    const skillDiceFormula = calculateSkillValue(
+                      attributeValue,
+                      rangedSkill.bonusDice,
+                      skillBlibs,
+                      rangedSkill.isWeakened,
+                      isLearned
+                    )
+                    return skillDiceFormula
+                  }
+                  return null
+                }
+
+                // Hilfsfunktion: Extrahiere Wucht/Präzision/Schadensreduktion aus description
+                const extractWeaponStats = (item: any) => {
+                  if (!item.description) return { wucht: null, praezision: null, schadensreduktion: null }
+                  const desc = item.description.toLowerCase()
+                  // Suche nach Wucht/Präzision/Schadensreduktion in description
+                  const wuchtMatch = desc.match(/wucht[:\s]*(\d+d[\+\d]*|\d+)/i)
+                  const praezisionMatch = desc.match(/präzision[:\s]*(\d+d[\+\d]*|\d+)/i)
+                  const schadensreduktionMatch = desc.match(/schadensreduktion[:\s]*(\d+)/i)
+                  
+                  return {
+                    wucht: wuchtMatch ? wuchtMatch[1] : null,
+                    praezision: praezisionMatch ? praezisionMatch[1] : null,
+                    schadensreduktion: schadensreduktionMatch ? schadensreduktionMatch[1] : null
+                  }
+                }
+                
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead className="sticky top-0 z-20 bg-slate-900">
+                        <tr>
+                          <th className="bg-white/10 text-white text-left p-3 border border-white/20 sticky left-0 z-30 w-[200px]">
+                            Charakter
+                          </th>
+                          {Array.from(charactersByPlayer.entries()).map(([playerName, playerChars]) => (
+                            playerChars.map((char, idx) => {
+                              const isHidden = hiddenCharacters.has(char.id)
+                              
+                              if (idx > 0 && !isHidden) return null
+                              
+                              return (
+                                <th
+                                  key={char.id}
+                                  colSpan={idx === 0 && !isHidden ? playerChars.filter(c => !hiddenCharacters.has(c.id)).length : 1}
+                                  className={`bg-white/10 text-white text-center p-3 border border-white/20 ${
+                                    isHidden ? 'w-[60px]' : 'w-[180px]'
+                                  }`}
+                                >
+                                  {isHidden ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <button
+                                        onClick={() => {
+                                          const newHidden = new Set(hiddenCharacters)
+                                          newHidden.delete(char.id)
+                                          setHiddenCharacters(newHidden)
+                                        }}
+                                        className="text-white/70 hover:text-white text-lg"
+                                        title="Einblenden"
+                                      >
+                                        +
+                                      </button>
+                                      <div className="text-xs font-semibold">
+                                        {getInitials(char.name)}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {idx === 0 && (
+                                        <div className="text-xs text-white/70 mb-1">
+                                          {playerName}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center justify-center gap-2">
+                                        <div className="flex-1 relative group">
+                                          <div className="text-sm font-semibold">
+                                            {char.name}
+                                          </div>
+                                          {char.isNPC && (
+                                            <>
+                                              <div className="text-xs text-yellow-400">
+                                                {char.npcType === 'händler' ? '🏪' : char.npcType === 'stadtwache' ? '🛡️' : char.npcType === 'monster' ? '👹' : '👤'}
+                                              </div>
+                                              {char.npcProfession && (
+                                                <div className="text-xs text-white/70 mt-1">
+                                                  {char.npcProfession}
+                                                </div>
+                                              )}
+                                              
+                                              {/* Hover-Info für NPCs */}
+                                              {char.isNPC && (
+                                                <div className="absolute left-0 top-full mt-2 w-80 bg-slate-800 rounded-lg p-4 border border-white/20 shadow-xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                                                  <div className="space-y-2 text-sm">
+                                                    {char.race && <p><span className="text-white/70">Rasse:</span> <span className="text-white">{char.race}</span></p>}
+                                                    {char.className && <p><span className="text-white/70">Klasse:</span> <span className="text-white">{char.className}</span></p>}
+                                                    {char.gender && <p><span className="text-white/70">Geschlecht:</span> <span className="text-white">{char.gender}</span></p>}
+                                                    {char.npcAffiliation && <p><span className="text-white/70">Zugehörigkeit:</span> <span className="text-white">{char.npcAffiliation}</span></p>}
+                                                    {char.npcLocation && <p><span className="text-white/70">Ort:</span> <span className="text-white">{char.npcLocation}</span></p>}
+                                                    {char.npcAddress && <p><span className="text-white/70">Adresse:</span> <span className="text-white">{char.npcAddress}</span></p>}
+                                                    {char.npcBestSkills && char.npcBestSkills.length > 0 && (
+                                                      <p>
+                                                        <span className="text-white/70">Beste Fähigkeiten:</span>{' '}
+                                                        <span className="text-white">{char.npcBestSkills.join(', ')}</span>
+                                                      </p>
+                                                    )}
+                                                    
+                                                    {/* Geheim-Attribute (nur für Spielleiter sichtbar) */}
+                                                    {(char.npcSecretAlignment || char.npcSecretAgenda || char.npcSecretQuestGiver || char.npcSecretHiddenHero || char.npcSecretNemesis || char.npcSecretPerpetrator || char.npcSecretVictim) && (
+                                                      <div className="border-t border-white/20 pt-2 mt-2">
+                                                        <p className="text-yellow-400 text-xs font-semibold mb-1">🔒 Geheim:</p>
+                                                        {char.npcSecretAlignment && (() => {
+                                                          const alignment = getAlignment(char.npcSecretAlignment.row, char.npcSecretAlignment.col)
+                                                          return alignment ? (
+                                                            <p className="text-white/70 text-xs">Gesinnung: {alignment.name}</p>
+                                                          ) : null
+                                                        })()}
+                                                        {char.npcSecretAgenda && (
+                                                          <p className="text-white/70 text-xs">Agenda: {char.npcSecretAgenda}</p>
+                                                        )}
+                                                        {char.npcSecretQuestGiver && (
+                                                          <p className="text-yellow-300 text-xs">✓ Questgeber</p>
+                                                        )}
+                                                        {char.npcSecretHiddenHero && (
+                                                          <p className="text-yellow-300 text-xs">✓ Versteckter Held</p>
+                                                        )}
+                                                        {char.npcSecretNemesis && (
+                                                          <p className="text-red-300 text-xs">Erzfeind: {char.npcSecretNemesis}</p>
+                                                        )}
+                                                        {char.npcSecretPerpetrator && (
+                                                          <p className="text-red-300 text-xs">✓ Täter</p>
+                                                        )}
+                                                        {char.npcSecretVictim && (
+                                                          <p className="text-red-300 text-xs">✓ Opfer</p>
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          {char.isNPC && (
+                                            <>
+                                              <button
+                                                onClick={() => {
+                                                  setEditingNpc(char)
+                                                  setShowNpcCreation(true)
+                                                }}
+                                                className="text-blue-400 hover:text-blue-300 text-sm"
+                                                title="Bearbeiten"
+                                              >
+                                                ✏️
+                                              </button>
+                                              <button
+                                                onClick={async () => {
+                                                  // Übertrage NPC ins Tagebuch (ohne Geheim-Attribute)
+                                                  const now = new Date()
+                                                  let fantasyDate
+                                                  if (groupId) {
+                                                    const groupSettings = await getGroupSettings(groupId)
+                                                    const startDate = groupSettings?.fantasyCalendar?.startDate
+                                                    const realStartDate = groupSettings?.fantasyCalendar?.realStartDate 
+                                                      ? new Date(groupSettings.fantasyCalendar.realStartDate)
+                                                      : undefined
+                                                    fantasyDate = realDateToFantasyDate(now, startDate, realStartDate)
+                                                  } else {
+                                                    fantasyDate = realDateToFantasyDate(now)
+                                                  }
+
+                                                  const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
+                                                  const author = playerName || 'Spielleiter'
+                                                  
+                                                  // Erstelle Tagebuch-Eintrag ohne Geheim-Attribute
+                                                  const publicInfo = [
+                                                    `Name: ${char.name}`,
+                                                    char.race ? `Rasse: ${char.race}` : '',
+                                                    char.className ? `Klasse: ${char.className}` : '',
+                                                    char.gender ? `Geschlecht: ${char.gender}` : '',
+                                                    char.npcProfession ? `Beruf: ${char.npcProfession}` : '',
+                                                    char.npcAffiliation ? `Zugehörigkeit: ${char.npcAffiliation}` : '',
+                                                    char.npcLocation ? `Ort: ${char.npcLocation}` : '',
+                                                    char.npcAddress ? `Adresse: ${char.npcAddress}` : '',
+                                                    char.npcBestSkills && char.npcBestSkills.length > 0 ? `Beste Fähigkeiten: ${char.npcBestSkills.join(', ')}` : '',
+                                                  ].filter(Boolean).join('\n')
+
+                                                  const entry: JournalEntry = {
+                                                    id: Date.now().toString(),
+                                                    author,
+                                                    characterId: char.id,
+                                                    title: `NPC: ${char.name}`,
+                                                    content: publicInfo,
+                                                    timestamp: now,
+                                                    fantasyDate,
+                                                    timeOfDay: selectedTimeOfDay as any,
+                                                  }
+
+                                                  const entries = [...journalEntries, entry]
+                                                  setJournalEntries(entries)
+                                                  await saveJournalEntry(entry)
+                                                }}
+                                                className="text-green-400 hover:text-green-300 text-sm"
+                                                title="Ins Tagebuch übertragen"
+                                              >
+                                                📔
+                                              </button>
+                                            </>
+                                          )}
+                                          <button
+                                            onClick={() => {
+                                              const newHidden = new Set(hiddenCharacters)
+                                              newHidden.add(char.id)
+                                              setHiddenCharacters(newHidden)
+                                            }}
+                                            className="text-white/70 hover:text-white text-sm"
+                                            title="Ausblenden"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </th>
+                              )
+                            })
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Klasse / Rasse
+                          </td>
+                          {visibleCharacters.map(char => (
+                            <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                              {char.className || '-'} / {char.race || '-'}
+                            </td>
+                          ))}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Gesinnung
+                          </td>
+                          {visibleCharacters.map(char => {
+                            const { getAlignment } = require('@/lib/alignments')
+                            const alignment = char.alignment ? getAlignment(char.alignment.row, char.alignment.col) : null
+                            return (
+                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                                {alignment ? (
+                                  <div className="text-sm">
+                                    <div className="font-semibold">{alignment.name}</div>
+                                    {alignment.nameEnglish && (
+                                      <div className="text-white/70 text-xs">{alignment.nameEnglish}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-white/30">-</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Level
+                          </td>
+                          {visibleCharacters.map(char => (
+                            <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                              {char.level || 1}
+                            </td>
+                          ))}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            HP
+                          </td>
+                          {visibleCharacters.map(char => {
+                            const hp = calculateHitPoints(char)
+                            return (
+                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                                {char.currentHP !== undefined ? char.currentHP : hp} / {char.maxHP !== undefined ? char.maxHP : hp}
+                              </td>
+                            )
+                          })}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Nahkampfwaffe
+                          </td>
+                          {visibleCharacters.map(char => {
+                            const meleeWeapon = getMeleeWeapon(char)
+                            const meleeSkill = getMeleeSkill(char)
+                            const stats = meleeWeapon ? extractWeaponStats(meleeWeapon) : { wucht: null, praezision: null, schadensreduktion: null }
+                            return (
+                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                                {meleeWeapon ? (
+                                  <div className="text-xs">
+                                    <div className="font-semibold">{meleeWeapon.name}</div>
+                                    {meleeSkill && (
+                                      <div className="text-white/70">Treffer: {formatD6Value(meleeSkill)}</div>
+                                    )}
+                                    {stats.wucht && (
+                                      <div className="text-white/70">Wucht: {stats.wucht}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-white/30">-</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Fernkampfwaffe
+                          </td>
+                          {visibleCharacters.map(char => {
+                            const rangedWeapon = getRangedWeapon(char)
+                            const rangedSkill = getRangedSkill(char)
+                            const stats = rangedWeapon ? extractWeaponStats(rangedWeapon) : { wucht: null, praezision: null, schadensreduktion: null }
+                            return (
+                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                                {rangedWeapon ? (
+                                  <div className="text-xs">
+                                    <div className="font-semibold">{rangedWeapon.name}</div>
+                                    {rangedSkill && (
+                                      <div className="text-white/70">Treffer: {formatD6Value(rangedSkill)}</div>
+                                    )}
+                                    {stats.praezision && (
+                                      <div className="text-white/70">Präzision: {stats.praezision}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-white/30">-</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Rüstung
+                          </td>
+                          {visibleCharacters.map(char => {
+                            const armor = getArmor(char)
+                            const stats = armor ? extractWeaponStats(armor) : { wucht: null, praezision: null, schadensreduktion: null }
+                            return (
+                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                                {armor ? (
+                                  <div className="text-xs">
+                                    <div className="font-semibold">{armor.name}</div>
+                                    {stats.schadensreduktion && (
+                                      <div className="text-white/70">Schadensreduktion: {stats.schadensreduktion}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-white/30">-</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
+                            Ausweichen
+                          </td>
+                          {visibleCharacters.map(char => {
+                            const dodgeSkill = getDodgeSkill(char)
+                            return (
+                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
+                                {dodgeSkill ? (
+                                  <div className="font-mono">{formatD6Value(dodgeSkill)}</div>
+                                ) : (
+                                  <span className="text-white/30">-</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                          {hiddenChars.map(char => (
+                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
+                              -
+                            </td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
+              </div>
+            </div>
+
+                    {/* NPC-Liste */}
+                    {(() => {
+                      const npcs = groupCharacters.filter(char => char.isNPC)
+                      if (npcs.length === 0) return null
+
+                      return (
+                        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+                          <h2 className="text-2xl font-bold text-white mb-4">NPCs</h2>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {npcs.map(npc => {
+                              const alignment = npc.npcSecretAlignment ? getAlignment(npc.npcSecretAlignment.row, npc.npcSecretAlignment.col) : null
+                              return (
+                                <div
+                                  key={npc.id}
+                                  className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-all group relative"
+                                >
+                                  {/* Sichtbare Info: Name und Beruf */}
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex-1">
+                                      <h3 className="text-white font-semibold text-lg">{npc.name}</h3>
+                                      {npc.npcProfession && (
+                                        <p className="text-white/70 text-sm mt-1">{npc.npcProfession}</p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => {
+                                          setEditingNpc(npc)
+                                          setShowNpcCreation(true)
+                                        }}
+                                        className="text-blue-400 hover:text-blue-300 text-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Bearbeiten"
+                                      >
+                                        ✏️
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          const now = new Date()
+                                          let fantasyDate
+                                          if (groupId) {
+                                            const groupSettings = await getGroupSettings(groupId)
+                                            const startDate = groupSettings?.fantasyCalendar?.startDate
+                                            const realStartDate = groupSettings?.fantasyCalendar?.realStartDate 
+                                              ? new Date(groupSettings.fantasyCalendar.realStartDate)
+                                              : undefined
+                                            fantasyDate = realDateToFantasyDate(now, startDate, realStartDate)
+                                          } else {
+                                            fantasyDate = realDateToFantasyDate(now)
+                                          }
+
+                                          const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
+                                          const author = playerName || 'Spielleiter'
+                                          
+                                          const publicInfo = [
+                                            `Name: ${npc.name}`,
+                                            npc.race ? `Rasse: ${npc.race}` : '',
+                                            npc.className ? `Klasse: ${npc.className}` : '',
+                                            npc.gender ? `Geschlecht: ${npc.gender}` : '',
+                                            npc.npcProfession ? `Beruf: ${npc.npcProfession}` : '',
+                                            npc.npcAffiliation ? `Zugehörigkeit: ${npc.npcAffiliation}` : '',
+                                            npc.npcLocation ? `Ort: ${npc.npcLocation}` : '',
+                                            npc.npcAddress ? `Adresse: ${npc.npcAddress}` : '',
+                                            npc.npcBestSkills && npc.npcBestSkills.length > 0 ? `Beste Fähigkeiten: ${npc.npcBestSkills.join(', ')}` : '',
+                                          ].filter(Boolean).join('\n')
+
+                                          const entry: JournalEntry = {
+                                            id: Date.now().toString(),
+                                            author,
+                                            characterId: npc.id,
+                                            title: `NPC: ${npc.name}`,
+                                            content: publicInfo,
+                                            timestamp: now,
+                                            fantasyDate,
+                                            timeOfDay: selectedTimeOfDay as any,
+                                          }
+
+                                          const entries = [...journalEntries, entry]
+                                          setJournalEntries(entries)
+                                          await saveJournalEntry(entry)
+                                        }}
+                                        className="text-green-400 hover:text-green-300 text-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Ins Tagebuch übertragen"
+                                      >
+                                        📔
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Hover-Info (erscheint beim Hovern) */}
+                                  <div className="absolute left-0 top-full mt-2 w-80 bg-slate-800 rounded-lg p-4 border border-white/20 shadow-xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                                    <div className="space-y-2 text-sm">
+                                      {npc.race && <p><span className="text-white/70">Rasse:</span> <span className="text-white">{npc.race}</span></p>}
+                                      {npc.className && <p><span className="text-white/70">Klasse:</span> <span className="text-white">{npc.className}</span></p>}
+                                      {npc.gender && <p><span className="text-white/70">Geschlecht:</span> <span className="text-white">{npc.gender}</span></p>}
+                                      {npc.npcAffiliation && <p><span className="text-white/70">Zugehörigkeit:</span> <span className="text-white">{npc.npcAffiliation}</span></p>}
+                                      {npc.npcLocation && <p><span className="text-white/70">Ort:</span> <span className="text-white">{npc.npcLocation}</span></p>}
+                                      {npc.npcAddress && <p><span className="text-white/70">Adresse:</span> <span className="text-white">{npc.npcAddress}</span></p>}
+                                      {npc.npcBestSkills && npc.npcBestSkills.length > 0 && (
+                                        <p>
+                                          <span className="text-white/70">Beste Fähigkeiten:</span>{' '}
+                                          <span className="text-white">{npc.npcBestSkills.join(', ')}</span>
+                                        </p>
+                                      )}
+                                      
+                                      {/* Geheim-Attribute (nur für Spielleiter sichtbar) */}
+                                      <div className="border-t border-white/20 pt-2 mt-2">
+                                        <p className="text-yellow-400 text-xs font-semibold mb-1">🔒 Geheim:</p>
+                                        {alignment && (
+                                          <p className="text-white/70 text-xs">Gesinnung: {alignment.name}</p>
+                                        )}
+                                        {npc.npcSecretAgenda && (
+                                          <p className="text-white/70 text-xs">Agenda: {npc.npcSecretAgenda}</p>
+                                        )}
+                                        {npc.npcSecretQuestGiver && (
+                                          <p className="text-yellow-300 text-xs">✓ Questgeber</p>
+                                        )}
+                                        {npc.npcSecretHiddenHero && (
+                                          <p className="text-yellow-300 text-xs">✓ Versteckter Held</p>
+                                        )}
+                                        {npc.npcSecretNemesis && (
+                                          <p className="text-red-300 text-xs">Erzfeind: {npc.npcSecretNemesis}</p>
+                                        )}
+                                        {npc.npcSecretPerpetrator && (
+                                          <p className="text-red-300 text-xs">✓ Täter</p>
+                                        )}
+                                        {npc.npcSecretVictim && (
+                                          <p className="text-red-300 text-xs">✓ Opfer</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Fertigkeiten-Tabelle */}
+                    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+                      <h2 className="text-2xl font-bold text-white mb-4">Fertigkeiten-Übersicht</h2>
+              <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+              {(() => {
+                // Filtere nur Charaktere der aktuellen Gruppe
+                const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
+                // Filtere Standard-Spieler raus: Kobi, Julia, JJ, Georg
+                const groupCharacters = (groupId 
+                  ? characters.filter(char => {
+                      return true
+                    })
+                  : characters
+                ).filter(char => 
+                  !char.deletedDate && 
+                  char.playerName !== 'Kobi' && 
+                  char.playerName !== 'Julia' && 
+                  char.playerName !== 'JJ' && 
+                  char.playerName !== 'Georg'
+                )
                 
                 if (groupCharacters.length === 0) {
                   return <p className="text-white/70">Noch keine Charaktere in dieser Gruppe vorhanden.</p>
@@ -477,8 +1223,8 @@ export default function SpielleiterPage() {
                         <div key={attribute} className="mb-6">
                           <div className="overflow-x-auto">
                             <table className="w-full border-collapse">
-                              <thead className="sticky top-0 z-20">
-                                {/* Attribut-Zeile mit Spieler/Charakter nur einmal */}
+                              <thead className="sticky top-0 z-20 bg-slate-900">
+                                {/* Kopf-Zeile: Spieler/Charakter nur einmal - FIXIERT */}
                                 <tr>
                                   <th className="bg-white/10 text-white text-left p-3 border border-white/20 sticky left-0 z-30 w-[200px]">
                                     {attribute}
@@ -486,14 +1232,13 @@ export default function SpielleiterPage() {
                                   {Array.from(charactersByPlayer.entries()).map(([playerName, playerChars]) => (
                                     playerChars.map((char, idx) => {
                                       const isHidden = hiddenCharacters.has(char.id)
-                                      const colSpan = idx === 0 ? playerChars.length : 0
                                       
                                       if (idx > 0 && !isHidden) return null
                                       
                                       return (
                                         <th
                                           key={char.id}
-                                          colSpan={idx === 0 && !isHidden ? playerChars.length : 1}
+                                          colSpan={idx === 0 && !isHidden ? playerChars.filter(c => !hiddenCharacters.has(c.id)).length : 1}
                                           className={`bg-white/10 text-white text-center p-3 border border-white/20 ${
                                             isHidden ? 'w-[60px]' : 'w-[140px]'
                                           }`}
@@ -610,206 +1355,6 @@ export default function SpielleiterPage() {
                 )
               })()}
               </div>
-            </div>
-
-            {/* Charaktere-Übersicht */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <h2 className="text-2xl font-bold text-white mb-4">Charaktere-Übersicht</h2>
-              <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
-              {(() => {
-                const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
-                const groupCharacters = (groupId 
-                  ? characters.filter(char => {
-                      return true
-                    })
-                  : characters
-                ).filter(char => !char.deletedDate)
-                
-                if (groupCharacters.length === 0) {
-                  return <p className="text-white/70">Noch keine Charaktere in dieser Gruppe vorhanden.</p>
-                }
-                
-                // Gruppiere Charaktere nach Spieler
-                const charactersByPlayer = new Map<string, Character[]>()
-                groupCharacters.forEach(char => {
-                  const player = char.playerName
-                  if (!charactersByPlayer.has(player)) {
-                    charactersByPlayer.set(player, [])
-                  }
-                  charactersByPlayer.get(player)!.push(char)
-                })
-                
-                const visibleCharacters = groupCharacters.filter(char => !hiddenCharacters.has(char.id))
-                const hiddenChars = groupCharacters.filter(char => hiddenCharacters.has(char.id))
-                
-                // Funktion zum Erstellen von Initialen
-                const getInitials = (name: string) => {
-                  return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
-                }
-                
-                return (
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
-                      <thead className="sticky top-0 z-20 bg-slate-900">
-                        <tr>
-                          <th className="bg-white/10 text-white text-left p-3 border border-white/20 sticky left-0 z-30 w-[200px]">
-                            Charakter
-                          </th>
-                          {Array.from(charactersByPlayer.entries()).map(([playerName, playerChars]) => (
-                            playerChars.map((char, idx) => {
-                              const isHidden = hiddenCharacters.has(char.id)
-                              
-                              if (idx > 0 && !isHidden) return null
-                              
-                              return (
-                                <th
-                                  key={char.id}
-                                  colSpan={idx === 0 && !isHidden ? playerChars.filter(c => !hiddenCharacters.has(c.id)).length : 1}
-                                  className={`bg-white/10 text-white text-center p-3 border border-white/20 ${
-                                    isHidden ? 'w-[60px]' : 'w-[180px]'
-                                  }`}
-                                >
-                                  {isHidden ? (
-                                    <div className="flex flex-col items-center gap-1">
-                                      <button
-                                        onClick={() => {
-                                          const newHidden = new Set(hiddenCharacters)
-                                          newHidden.delete(char.id)
-                                          setHiddenCharacters(newHidden)
-                                        }}
-                                        className="text-white/70 hover:text-white text-lg"
-                                        title="Einblenden"
-                                      >
-                                        +
-                                      </button>
-                                      <div className="text-xs font-semibold">
-                                        {getInitials(char.name)}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      {idx === 0 && (
-                                        <div className="text-xs text-white/70 mb-1">
-                                          {playerName}
-                                        </div>
-                                      )}
-                                      <div className="flex items-center justify-center gap-2">
-                                        <div className="flex-1">
-                                          <div className="text-sm font-semibold">
-                                            {char.name}
-                                          </div>
-                                          {char.isNPC && (
-                                            <div className="text-xs text-yellow-400">
-                                              {char.npcType === 'händler' ? '🏪' : char.npcType === 'stadtwache' ? '🛡️' : char.npcType === 'monster' ? '👹' : '👤'}
-                                            </div>
-                                          )}
-                                        </div>
-                                        <button
-                                          onClick={() => {
-                                            const newHidden = new Set(hiddenCharacters)
-                                            newHidden.add(char.id)
-                                            setHiddenCharacters(newHidden)
-                                          }}
-                                          className="text-white/70 hover:text-white text-sm"
-                                          title="Ausblenden"
-                                        >
-                                          ×
-                                        </button>
-                                      </div>
-                                    </>
-                                  )}
-                                </th>
-                              )
-                            })
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
-                            Spieler
-                          </td>
-                          {visibleCharacters.map(char => (
-                            <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
-                              {char.playerName}
-                            </td>
-                          ))}
-                          {hiddenChars.map(char => (
-                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
-                              -
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
-                            Klasse / Rasse
-                          </td>
-                          {visibleCharacters.map(char => (
-                            <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
-                              {char.className || '-'} / {char.race || '-'}
-                            </td>
-                          ))}
-                          {hiddenChars.map(char => (
-                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
-                              -
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
-                            Level
-                          </td>
-                          {visibleCharacters.map(char => (
-                            <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
-                              {char.level || 1}
-                            </td>
-                          ))}
-                          {hiddenChars.map(char => (
-                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
-                              -
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
-                            HP
-                          </td>
-                          {visibleCharacters.map(char => {
-                            const hp = calculateHitPoints(char)
-                            return (
-                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
-                                {char.currentHP !== undefined ? char.currentHP : hp} / {char.maxHP !== undefined ? char.maxHP : hp}
-                              </td>
-                            )
-                          })}
-                          {hiddenChars.map(char => (
-                            <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
-                              -
-                            </td>
-                          ))}
-                        </tr>
-                        {['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'].map(attr => (
-                          <tr key={attr}>
-                            <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
-                              {attr}
-                            </td>
-                            {visibleCharacters.map(char => (
-                              <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
-                                {formatD6Value(char.attributes[attr] || '1D')}
-                              </td>
-                            ))}
-                            {hiddenChars.map(char => (
-                              <td key={char.id} className="text-white/30 text-center p-2 border border-white/20 w-[60px]">
-                                -
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })()}
               </div>
             </div>
 
@@ -821,17 +1366,42 @@ export default function SpielleiterPage() {
           <div className="space-y-6">
             {/* Neue Eintrag hinzufügen */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <h2 className="text-2xl font-bold text-white mb-4">Neuer Eintrag</h2>
+              <h2 className="text-2xl font-bold text-white mb-4">
+                {editingEntry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
+              </h2>
               <div className="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Titel"
-                  value={newJournalEntry.title}
-                  onChange={(e) =>
-                    setNewJournalEntry({ ...newJournalEntry, title: e.target.value })
-                  }
-                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
+                {/* Autor-Auswahl */}
+                <div className="flex items-center gap-3">
+                  <label className="text-white/90 w-24">Autor:</label>
+                  <select
+                    value={selectedAuthor}
+                    onChange={(e) => setSelectedAuthor(e.target.value)}
+                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  >
+                    <option value="" className="bg-slate-800">-- Auswählen --</option>
+                    <optgroup label="Spieler-Charaktere" className="bg-slate-800">
+                      {characters.filter(c => !c.isNPC && !c.deletedDate).map(char => (
+                        <option key={char.id} value={char.id} className="bg-slate-800">
+                          {char.name} ({char.playerName})
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="NPCs" className="bg-slate-800">
+                      {characters.filter(c => c.isNPC && !c.deletedDate).map(char => (
+                        <option key={char.id} value={char.id} className="bg-slate-800">
+                          {char.name} {char.npcType ? `(${char.npcType})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Spielleiter" className="bg-slate-800">
+                      <option value="spielleiter" className="bg-slate-800">
+                        Spielleiter
+                      </option>
+                    </optgroup>
+                  </select>
+                </div>
+                
+                {/* Tageszeit */}
                 <div className="flex items-center gap-3">
                   <label className="text-white/90 w-24">Tageszeit:</label>
                   <select
@@ -846,8 +1416,10 @@ export default function SpielleiterPage() {
                     ))}
                   </select>
                 </div>
+                
+                {/* Text-Eingabe (Titel: Inhalt Format) */}
                 <textarea
-                  placeholder="Inhalt..."
+                  placeholder="Titel: Inhalt... (z.B. 'Begegnung: Wir trafen einen Händler auf dem Markt')"
                   value={newJournalEntry.content}
                   onChange={(e) =>
                     setNewJournalEntry({ ...newJournalEntry, content: e.target.value })
@@ -855,12 +1427,28 @@ export default function SpielleiterPage() {
                   rows={4}
                   className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
-                <button
-                  onClick={handleAddJournalEntry}
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
-                >
-                  Eintrag hinzufügen
-                </button>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleAddJournalEntry}
+                    className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                  >
+                    {editingEntry ? 'Speichern' : 'Eintrag hinzufügen'}
+                  </button>
+                  {editingEntry && (
+                    <button
+                      onClick={() => {
+                        setEditingEntry(null)
+                        setNewJournalEntry({ title: '', content: '' })
+                        setSelectedAuthor('')
+                        setSelectedTimeOfDay('Mittag')
+                      }}
+                      className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -921,7 +1509,47 @@ export default function SpielleiterPage() {
                           </div>
                         </div>
                       )}
-                      <p className="text-white/80 mb-2">Von: {entry.author}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-white/80">Von: {entry.author}</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingEntry(entry)
+                              setNewJournalEntry({ 
+                                title: entry.title, 
+                                content: `${entry.title}: ${entry.content}` 
+                              })
+                              setSelectedTimeOfDay(entry.timeOfDay || 'Mittag')
+                              // Setze Autor
+                              if (entry.characterId) {
+                                const char = characters.find(c => c.id === entry.characterId)
+                                setSelectedAuthor(char ? char.id : '')
+                              } else {
+                                setSelectedAuthor(entry.author === 'Spielleiter' ? 'spielleiter' : '')
+                              }
+                              // Scrolle zum Formular
+                              window.scrollTo({ top: 0, behavior: 'smooth' })
+                            }}
+                            className="px-3 py-1 bg-blue-600/50 hover:bg-blue-700/70 text-white rounded text-sm transition-colors"
+                          >
+                            ✏️ Bearbeiten
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (confirm('Möchtest du diesen Eintrag wirklich löschen?')) {
+                                const updatedEntries = journalEntries.filter(e => e.id !== entry.id)
+                                setJournalEntries(updatedEntries)
+                                // Lösche aus localStorage
+                                localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
+                                // TODO: Implementiere deleteJournalEntry in Supabase
+                              }
+                            }}
+                            className="px-3 py-1 bg-red-600/50 hover:bg-red-700/70 text-white rounded text-sm transition-colors"
+                          >
+                            🗑️ Löschen
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )
                 })}
@@ -1147,55 +1775,127 @@ export default function SpielleiterPage() {
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h2 className="text-2xl font-bold text-white mb-4">Fertigkeiten verwalten</h2>
               
-              {/* Neue Fertigkeit hinzufügen */}
+              {/* Neue Fertigkeit hinzufügen / Bearbeiten */}
               <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10">
-                <h3 className="text-lg font-semibold text-white mb-3">Neue Fertigkeit hinzufügen</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    type="text"
-                    placeholder="Fertigkeitsname"
-                    value={newSkill.name}
-                    onChange={(e) => setNewSkill({ ...newSkill, name: e.target.value })}
-                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  />
-                  <select
-                    value={newSkill.attribute}
-                    onChange={(e) => setNewSkill({ ...newSkill, attribute: e.target.value })}
-                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  >
-                    {['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'].map(attr => (
-                      <option key={attr} value={attr} className="bg-slate-800">{attr}</option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 text-white/70 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newSkill.isWeakened}
-                        onChange={(e) => setNewSkill({ ...newSkill, isWeakened: e.target.checked })}
-                        className="rounded"
-                      />
-                      <span>Geschwächt</span>
-                    </label>
-                    <button
-                      onClick={() => {
-                        if (newSkill.name.trim()) {
-                          addSkill({
-                            name: newSkill.name.trim(),
-                            attribute: newSkill.attribute,
-                            bonusDice: 0,
-                            specializations: [],
-                            isWeakened: newSkill.isWeakened,
-                            isCustom: false,
-                          })
-                          setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false })
-                          loadData()
+                <h3 className="text-lg font-semibold text-white mb-3">
+                  {editingSkill ? 'Fertigkeit bearbeiten' : 'Neue Fertigkeit hinzufügen'}
+                </h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input
+                      type="text"
+                      placeholder="Fertigkeitsname"
+                      value={editingSkill?.name || newSkill.name}
+                      onChange={(e) => {
+                        if (editingSkill) {
+                          setEditingSkill({ ...editingSkill, name: e.target.value })
+                        } else {
+                          setNewSkill({ ...newSkill, name: e.target.value })
                         }
                       }}
-                      className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                      className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    <select
+                      value={editingSkill?.attribute || newSkill.attribute}
+                      onChange={(e) => {
+                        if (editingSkill) {
+                          setEditingSkill({ ...editingSkill, attribute: e.target.value })
+                        } else {
+                          setNewSkill({ ...newSkill, attribute: e.target.value })
+                        }
+                      }}
+                      className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
                     >
-                      Hinzufügen
-                    </button>
+                      {['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'].map(attr => (
+                        <option key={attr} value={attr} className="bg-slate-800">{attr}</option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 text-white/70 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingSkill?.isWeakened || newSkill.isWeakened}
+                          onChange={(e) => {
+                            if (editingSkill) {
+                              setEditingSkill({ ...editingSkill, isWeakened: e.target.checked })
+                            } else {
+                              setNewSkill({ ...newSkill, isWeakened: e.target.checked })
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span>Geschwächt</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-white/90 mb-2">Hover-Over-Text / Beschreibung:</label>
+                    <textarea
+                      placeholder="Beschreibung der Fertigkeit (wird beim Hovern angezeigt)..."
+                      value={editingSkill?.description || newSkill.description}
+                      onChange={(e) => {
+                        if (editingSkill) {
+                          setEditingSkill({ ...editingSkill, description: e.target.value })
+                        } else {
+                          setNewSkill({ ...newSkill, description: e.target.value })
+                        }
+                      }}
+                      rows={3}
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    {editingSkill ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            if (editingSkill.name.trim()) {
+                              updateSkill(editingSkill.id, {
+                                name: editingSkill.name.trim(),
+                                attribute: editingSkill.attribute,
+                                isWeakened: editingSkill.isWeakened,
+                                description: editingSkill.description || undefined,
+                              })
+                              setEditingSkill(null)
+                              loadData()
+                            }
+                          }}
+                          className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                        >
+                          Speichern
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingSkill(null)
+                            setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
+                          }}
+                          className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+                        >
+                          Abbrechen
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (newSkill.name.trim()) {
+                            addSkill({
+                              name: newSkill.name.trim(),
+                              attribute: newSkill.attribute,
+                              bonusDice: 0,
+                              specializations: [],
+                              isWeakened: newSkill.isWeakened,
+                              isCustom: false,
+                              description: newSkill.description || undefined,
+                            })
+                            setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
+                            loadData()
+                          }
+                        }}
+                        className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                      >
+                        Hinzufügen
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1211,9 +1911,14 @@ export default function SpielleiterPage() {
                       <h3 className="text-lg font-semibold text-white mb-3">{attr}</h3>
                       <div className="space-y-2">
                         {attrSkills.map(skill => (
-                          <div key={skill.id} className="flex items-center justify-between bg-white/5 rounded p-3">
-                            <div className="flex items-center gap-3">
-                              <span className="text-white">{skill.name}</span>
+                          <div key={skill.id} className="flex items-center justify-between bg-white/5 rounded p-3 group relative">
+                            <div className="flex items-center gap-3 flex-1">
+                              <span className="text-white font-medium">{skill.name}</span>
+                              {skill.description && (
+                                <span className="text-white/50 text-xs cursor-help" title={skill.description}>
+                                  ℹ️
+                                </span>
+                              )}
                               {skill.isWeakened && (
                                 <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded">
                                   Geschwächt
@@ -1224,8 +1929,23 @@ export default function SpielleiterPage() {
                                   Eigen
                                 </span>
                               )}
+                              {/* Hover-Over-Text */}
+                              {skill.description && (
+                                <div className="absolute left-0 top-full mt-2 w-80 bg-slate-800 rounded-lg p-3 border border-white/20 shadow-xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                                  <p className="text-white text-sm">{skill.description}</p>
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingSkill(skill)
+                                }}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                                title="Bearbeiten"
+                              >
+                                ✏️
+                              </button>
                               <button
                                 onClick={() => {
                                   updateSkill(skill.id, { isWeakened: !skill.isWeakened })
@@ -1368,9 +2088,26 @@ export default function SpielleiterPage() {
                     max="20"
                     value={settings.maxAttributePoints}
                     onChange={(e) => {
-                      const newSettings = { ...settings, maxAttributePoints: parseInt(e.target.value) || 7 }
-                      setSettings(newSettings)
-                      saveCharacterCreationSettings(newSettings)
+                      const value = e.target.value
+                      if (value === '') {
+                        // Erlaube leeres Feld während der Eingabe
+                        setSettings({ ...settings, maxAttributePoints: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 20) {
+                        const newSettings = { ...settings, maxAttributePoints: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Wenn Feld leer ist beim Verlassen, setze auf Standardwert
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, maxAttributePoints: 7 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
                     }}
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
                   />
@@ -1386,9 +2123,24 @@ export default function SpielleiterPage() {
                     max="20"
                     value={settings.maxSkillPoints}
                     onChange={(e) => {
-                      const newSettings = { ...settings, maxSkillPoints: parseInt(e.target.value) || 8 }
-                      setSettings(newSettings)
-                      saveCharacterCreationSettings(newSettings)
+                      const value = e.target.value
+                      if (value === '') {
+                        setSettings({ ...settings, maxSkillPoints: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 20) {
+                        const newSettings = { ...settings, maxSkillPoints: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, maxSkillPoints: 8 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
                     }}
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
                   />
@@ -1404,9 +2156,24 @@ export default function SpielleiterPage() {
                     max="20"
                     value={settings.maxBlibs}
                     onChange={(e) => {
-                      const newSettings = { ...settings, maxBlibs: parseInt(e.target.value) || 4 }
-                      setSettings(newSettings)
-                      saveCharacterCreationSettings(newSettings)
+                      const value = e.target.value
+                      if (value === '') {
+                        setSettings({ ...settings, maxBlibs: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 20) {
+                        const newSettings = { ...settings, maxBlibs: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, maxBlibs: 4 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
                     }}
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
                   />
@@ -1476,6 +2243,33 @@ export default function SpielleiterPage() {
           </div>
         )}
       </div>
+
+      {/* NPC-Erstellung/Edit Dialog */}
+      {showNpcCreation && (
+        <NpcCreationExtended
+          editingNpc={editingNpc}
+          onComplete={(npc) => {
+            if (editingNpc) {
+              // Aktualisiere bestehenden NPC
+              const updated = characters.map(c => c.id === editingNpc.id ? npc : c)
+              setCharacters(updated)
+              saveCharacters(updated)
+            } else {
+              // Neuer NPC
+              const updated = [...characters, npc]
+              setCharacters(updated)
+              saveCharacters(updated)
+            }
+            setShowNpcCreation(false)
+            setEditingNpc(null)
+            loadData()
+          }}
+          onCancel={() => {
+            setShowNpcCreation(false)
+            setEditingNpc(null)
+          }}
+        />
+      )}
     </div>
   )
 }

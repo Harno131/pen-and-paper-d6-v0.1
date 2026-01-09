@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "restart": "powershell -ExecutionPolicy Bypass -File ./start.ps1",
-    "deploy": "powershell -ExecutionPolicy Bypass -File ./deploy.ps1"
+    "deploy": "powershell -ExecutionPolicy Bypass -File ./deploy.ps1",
+    "upload-bestiary": "node scripts/upload_bestiary.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",

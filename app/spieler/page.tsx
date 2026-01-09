@@ -33,6 +33,7 @@ export default function SpielerPage() {
   const [sharedImages, setSharedImages] = useState<SharedImage[]>([])
   const [newJournalEntry, setNewJournalEntry] = useState({ title: '', content: '' })
   const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<string>('Mittag')
+  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
   const [showCharacterCreation, setShowCharacterCreation] = useState(false)
   const [playerName, setPlayerName] = useState('')
   const [selectedSkillForRoll, setSelectedSkillForRoll] = useState<{ skill: any; specialization?: any } | null>(null)
@@ -70,7 +71,10 @@ export default function SpielerPage() {
 
   const loadData = async () => {
     const name = localStorage.getItem('playerName') || ''
-    const allCharacters = getCharacters()
+    
+    // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
+    const { getCharactersAsync } = await import('@/lib/data')
+    const allCharacters = await getCharactersAsync()
     const myCharacters = allCharacters.filter(c => c.playerName === name)
     setPlayerCharacters(myCharacters)
     
@@ -89,6 +93,15 @@ export default function SpielerPage() {
     setJournalEntries(entries)
     setSharedImages(getSharedImages())
   }
+
+  // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadData()
+    }, 5000) // Alle 5 Sekunden
+
+    return () => clearInterval(interval)
+  }, [])
 
   const handleCharacterSelect = (character: Character) => {
     setSelectedCharacter(character)
@@ -111,7 +124,7 @@ export default function SpielerPage() {
   }
 
   const handleAddJournalEntry = async () => {
-    if (!newJournalEntry.title.trim() || !newJournalEntry.content.trim()) return
+    if (!newJournalEntry.content.trim()) return
 
     const name = localStorage.getItem('playerName') || 'Unbekannt'
     const now = new Date()
@@ -128,22 +141,38 @@ export default function SpielerPage() {
     } else {
       fantasyDate = realDateToFantasyDate(now)
     }
+
+    // Extrahiere Titel aus Content (alles vor dem ersten Doppelpunkt)
+    const contentParts = newJournalEntry.content.split(':')
+    const title = contentParts.length > 1 ? contentParts[0].trim() : 'Eintrag'
+    const content = contentParts.length > 1 ? contentParts.slice(1).join(':').trim() : newJournalEntry.content.trim()
     
     const entry: JournalEntry = {
-      id: Date.now().toString(),
+      id: editingEntry?.id || Date.now().toString(),
       author: name,
-      characterId: selectedCharacter?.id,
-      title: newJournalEntry.title,
-      content: newJournalEntry.content,
-      timestamp: now,
+      characterId: selectedCharacter?.id || editingEntry?.characterId,
+      title,
+      content,
+      timestamp: editingEntry?.timestamp || now,
       fantasyDate,
       timeOfDay: selectedTimeOfDay as any,
     }
 
-    const entries = [...journalEntries, entry]
-    setJournalEntries(entries)
-    await saveJournalEntry(entry)
+    if (editingEntry) {
+      // Aktualisiere bestehenden Eintrag
+      const updatedEntries = journalEntries.map(e => e.id === editingEntry.id ? entry : e)
+      setJournalEntries(updatedEntries)
+      await saveJournalEntry(entry)
+      setEditingEntry(null)
+    } else {
+      // Neuer Eintrag
+      const entries = [...journalEntries, entry]
+      setJournalEntries(entries)
+      await saveJournalEntry(entry)
+    }
+    
     setNewJournalEntry({ title: '', content: '' })
+    setSelectedTimeOfDay('Mittag')
   }
 
   const handleAlignmentSelect = (row: number, col: number) => {
@@ -413,6 +442,18 @@ export default function SpielerPage() {
                     {selectedCharacter.className && (
                       <p><span className="font-semibold">Klasse:</span> {selectedCharacter.className}</p>
                     )}
+                    {selectedCharacter.alignment && (() => {
+                      const { getAlignment } = require('@/lib/alignments')
+                      const alignment = getAlignment(selectedCharacter.alignment.row, selectedCharacter.alignment.col)
+                      return alignment ? (
+                        <p>
+                          <span className="font-semibold">Gesinnung:</span> {alignment.name}
+                          {alignment.nameEnglish && (
+                            <span className="text-white/60 text-sm ml-2">({alignment.nameEnglish})</span>
+                          )}
+                        </p>
+                      ) : null
+                    })()}
                   </div>
                 </div>
                 <button
@@ -994,18 +1035,10 @@ export default function SpielerPage() {
             {/* Neue Eintrag hinzufügen */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h2 className="text-2xl font-bold text-white mb-4">
-                Neuer Eintrag
+                {editingEntry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
               </h2>
               <div className="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Titel"
-                  value={newJournalEntry.title}
-                  onChange={(e) =>
-                    setNewJournalEntry({ ...newJournalEntry, title: e.target.value })
-                  }
-                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
+                {/* Tageszeit */}
                 <div className="flex items-center gap-3">
                   <label className="text-white/90 w-24">Tageszeit:</label>
                   <select
@@ -1020,8 +1053,10 @@ export default function SpielerPage() {
                     ))}
                   </select>
                 </div>
+                
+                {/* Text-Eingabe (Titel: Inhalt Format) */}
                 <textarea
-                  placeholder="Inhalt..."
+                  placeholder="Titel: Inhalt... (z.B. 'Begegnung: Wir trafen einen Händler auf dem Markt')"
                   value={newJournalEntry.content}
                   onChange={(e) =>
                     setNewJournalEntry({ ...newJournalEntry, content: e.target.value })
@@ -1029,12 +1064,27 @@ export default function SpielerPage() {
                   rows={4}
                   className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
-                <button
-                  onClick={handleAddJournalEntry}
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
-                >
-                  Eintrag hinzufügen
-                </button>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleAddJournalEntry}
+                    className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                  >
+                    {editingEntry ? 'Speichern' : 'Eintrag hinzufügen'}
+                  </button>
+                  {editingEntry && (
+                    <button
+                      onClick={() => {
+                        setEditingEntry(null)
+                        setNewJournalEntry({ title: '', content: '' })
+                        setSelectedTimeOfDay('Mittag')
+                      }}
+                      className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1095,7 +1145,41 @@ export default function SpielerPage() {
                           </div>
                         </div>
                       )}
-                      <p className="text-white/80 mb-2">Von: {entry.author}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-white/80">Von: {entry.author}</p>
+                        {/* Nur eigene Einträge können bearbeitet werden */}
+                        {entry.author === (typeof window !== 'undefined' ? localStorage.getItem('playerName') : '') && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingEntry(entry)
+                                setNewJournalEntry({ 
+                                  title: entry.title, 
+                                  content: `${entry.title}: ${entry.content}` 
+                                })
+                                setSelectedTimeOfDay(entry.timeOfDay || 'Mittag')
+                                // Scrolle zum Formular
+                                window.scrollTo({ top: 0, behavior: 'smooth' })
+                              }}
+                              className="px-3 py-1 bg-blue-600/50 hover:bg-blue-700/70 text-white rounded text-sm transition-colors"
+                            >
+                              ✏️ Bearbeiten
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (confirm('Möchtest du diesen Eintrag wirklich löschen?')) {
+                                  const updatedEntries = journalEntries.filter(e => e.id !== entry.id)
+                                  setJournalEntries(updatedEntries)
+                                  localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
+                                }
+                              }}
+                              className="px-3 py-1 bg-red-600/50 hover:bg-red-700/70 text-white rounded text-sm transition-colors"
+                            >
+                              🗑️ Löschen
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )
                 })}

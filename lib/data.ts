@@ -40,86 +40,8 @@ export const getCharacters = (): Character[] => {
       deletedDate: char.deletedDate ? new Date(char.deletedDate) : undefined,
     }))
   }
-  // Charakterbeispiele aus "P&P V2 22_05_2021.ods"
-  // Attribute basierend auf Georg-Blatt: Reflexe, Koordination, Stärke, Wissen, Wahrnehmung, Ausstrahlung, Magie
-  return [
-    {
-      id: '1',
-      name: 'Kalkor Flax',
-      playerName: 'Kobi',
-      attributes: {
-        Reflexe: '2D',
-        Koordination: '2D+1',
-        Stärke: '2D',
-        Wissen: '2D+2',
-        Wahrnehmung: '2D+1',
-        Ausstrahlung: '2D',
-        Magie: '1D',
-      },
-      skills: [],
-      inventory: [
-        { id: '1', name: 'Alchemie-Kit', description: 'Verschiedene Reagenzien und Utensilien', quantity: 1 },
-        { id: '2', name: 'Heiltrank', description: 'Stellt HP wieder her', quantity: 2 },
-      ],
-    },
-    {
-      id: '2',
-      name: 'Aloisius',
-      playerName: 'Julia',
-      attributes: {
-        Reflexe: '2D',
-        Koordination: '2D+1',
-        Stärke: '2D',
-        Wissen: '2D+2',
-        Wahrnehmung: '2D+1',
-        Ausstrahlung: '2D+1',
-        Magie: '0D',
-      },
-      skills: [],
-      inventory: [
-        { id: '3', name: 'Handelswaren', description: 'Verschiedene Waren zum Verkauf', quantity: 10 },
-        { id: '4', name: 'Geldbeutel', description: 'Enthält Münzen', quantity: 1 },
-      ],
-    },
-    {
-      id: '3',
-      name: 'Goatse',
-      playerName: 'JJ',
-      attributes: {
-        Reflexe: '2D+1',
-        Koordination: '2D',
-        Stärke: '2D+1',
-        Wissen: '2D',
-        Wahrnehmung: '2D+2',
-        Ausstrahlung: '2D',
-        Magie: '1D',
-      },
-      skills: [],
-      inventory: [
-        { id: '5', name: 'Hirtenstab', description: 'Ein einfacher Stab', quantity: 1 },
-        { id: '6', name: 'Wanderrucksack', description: 'Enthält persönliche Gegenstände', quantity: 1 },
-      ],
-    },
-    {
-      id: '4',
-      name: 'Georg',
-      playerName: 'Georg',
-      attributes: {
-        Reflexe: '2D+2',
-        Koordination: '2D+1',
-        Stärke: '2D+2',
-        Wissen: '2D+1',
-        Wahrnehmung: '2D+1',
-        Ausstrahlung: '2D',
-        Magie: '0D',
-      },
-      skills: [],
-      inventory: [
-        { id: '7', name: 'Kriegshammer', description: 'Ein schwerer Hammer', quantity: 1 },
-        { id: '8', name: 'Schild', description: 'Ein robuster Schild', quantity: 1 },
-      ],
-    },
-  ]
+  // Keine Standard-Charaktere mehr - alle Charaktere kommen aus Supabase/localStorage
+  return []
 }
 
 // Synchron für Kompatibilität (localStorage)

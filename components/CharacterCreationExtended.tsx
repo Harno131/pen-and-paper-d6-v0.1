@@ -57,8 +57,8 @@ export default function CharacterCreationExtended({
   const [customSkills, setCustomSkills] = useState<{ [attribute: string]: string }>({})
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [characterSkills, setCharacterSkills] = useState<{ [skillId: string]: Skill }>({})
-  const [expandedSpecializations, setExpandedSpecializations] = useState<{ [skillId: string]: boolean }>({})
   const [showOnlyLearned, setShowOnlyLearned] = useState(false)
+  const [newSpecialization, setNewSpecialization] = useState({ name: '', skillId: '' })
   const [settings, setSettings] = useState(getCharacterCreationSettings())
 
   useEffect(() => {
@@ -202,11 +202,28 @@ export default function CharacterCreationExtended({
     }))
   }
 
-  const toggleSpecializationExpansion = (skillId: string) => {
-    setExpandedSpecializations(prev => ({
+  const handleAddSpecializationGlobal = () => {
+    if (!newSpecialization.name.trim() || !newSpecialization.skillId) return
+
+    const skill = characterSkills[newSpecialization.skillId]
+    if (!skill) return
+
+    const newSpec: Specialization = {
+      id: Date.now().toString(),
+      name: newSpecialization.name.trim(),
+      skillName: skill.name,
+      blibs: 0,
+    }
+
+    setCharacterSkills(prev => ({
       ...prev,
-      [skillId]: !prev[skillId],
+      [newSpecialization.skillId]: {
+        ...prev[newSpecialization.skillId],
+        specializations: [...prev[newSpecialization.skillId].specializations, newSpec],
+      }
     }))
+
+    setNewSpecialization({ name: '', skillId: '' })
   }
 
   const getSkillsForAttribute = (attribute: string): Skill[] => {
@@ -542,8 +559,6 @@ export default function CharacterCreationExtended({
                             skill.isWeakened,
                             learned
                           )
-                          const isExpanded = expandedSpecializations[skill.id]
-
                           return (
                             <div key={skill.id} className="bg-white/5 rounded p-3 border border-white/10">
                               <div className="flex items-center gap-4">
@@ -560,13 +575,6 @@ export default function CharacterCreationExtended({
                                     </span>
                                   )}
                                 </div>
-                                {/* Spezialisierungen-Knopf */}
-                                <button
-                                  onClick={() => toggleSpecializationExpansion(skill.id)}
-                                  className="px-1 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs"
-                                >
-                                  {isExpanded ? '▼' : '▶'}
-                                </button>
                                 <div className="flex items-center gap-2 w-24 justify-end">
                                   {/* Fertigkeitspunkte */}
                                   <button
@@ -592,25 +600,9 @@ export default function CharacterCreationExtended({
                                 </div>
                               </div>
 
-                              {/* Spezialisierungen (ausklappbar) */}
-                              {isExpanded && (
-                                <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
-                                  {/* Neue Spezialisierung hinzufügen */}
-                                  <div className="flex gap-2">
-                                    <input
-                                      type="text"
-                                      placeholder="Spezialisierung hinzufügen..."
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          const input = e.target as HTMLInputElement
-                                          handleAddSpecialization(skill.id, input.value)
-                                          input.value = ''
-                                        }
-                                      }}
-                                      className="flex-1 px-3 py-1 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 text-sm"
-                                    />
-                                  </div>
-
+                              {/* Spezialisierungen (immer sichtbar, eingerückt) */}
+                              {characterSkill.specializations.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-white/10 space-y-2 pl-6">
                                   {/* Vorhandene Spezialisierungen */}
                                   {characterSkill.specializations.map((spec) => {
                                     const totalBlibs = spec.blibs
@@ -653,7 +645,54 @@ export default function CharacterCreationExtended({
                         })}
                       </div>
                       
-                      {/* Freie Zeile für eigene Fertigkeitsvorschläge - nach unten verschoben */}
+                      {/* Spezialisierung hinzufügen - ÜBER "Eigene Fertigkeit hinzufügen" */}
+                      <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                        <div className="text-white/90 text-sm font-medium mb-2">Eine Spezialisierung hinzufügen:</div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Name der Spezialisierung..."
+                            value={newSpecialization.skillId === attr ? newSpecialization.name : ''}
+                            onChange={(e) => {
+                              if (newSpecialization.skillId === attr) {
+                                setNewSpecialization(prev => ({ ...prev, name: e.target.value }))
+                              }
+                            }}
+                            className="flex-1 px-3 py-2 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 text-sm"
+                          />
+                          <select
+                            value={newSpecialization.skillId === attr ? newSpecialization.skillId : ''}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                setNewSpecialization({ name: newSpecialization.name, skillId: e.target.value })
+                              } else {
+                                setNewSpecialization({ name: '', skillId: '' })
+                              }
+                            }}
+                            className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          >
+                            <option value="" className="bg-slate-800">Fertigkeit wählen...</option>
+                            {attrSkills.map(s => (
+                              <option key={s.id} value={s.id} className="bg-slate-800">
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => {
+                              if (newSpecialization.skillId === attr && newSpecialization.name.trim()) {
+                                handleAddSpecializationGlobal()
+                              }
+                            }}
+                            disabled={!newSpecialization.name.trim() || newSpecialization.skillId !== attr}
+                            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+                          >
+                            Hinzufügen
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Freie Zeile für eigene Fertigkeitsvorschläge */}
                       <div className="mt-3 pt-3 border-t border-white/10 flex gap-2">
                         <input
                           type="text"

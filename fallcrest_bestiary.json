@@ -1,0 +1,22 @@
+[
+  { "name": "Moos-Skelett", "type": "Untoter", "stats": { "Reflexe": "2D", "Stärke": "3D", "Magie": "1D" }, "special": "Gischt-Heilung", "desc": "Alte Wächter, zusammengehalten durch magischen Algenbewuchs." },
+  { "name": "Gossen-Goblin", "type": "Humanoide", "stats": { "Reflexe": "4D", "Stärke": "1D+2", "Magie": "1D" }, "special": "Rutsch-Angriff", "desc": "Flinke Plünderer aus den feuchten Abwasserkanälen." },
+  { "name": "Nebel-Riesenratte", "type": "Tier", "stats": { "Reflexe": "3D", "Stärke": "2D", "Magie": "0D" }, "special": "Dunst-Tarnung", "desc": "Mutierte Ratten mit im Regenbogenlicht leuchtenden Augen." },
+  { "name": "Gischt-Brecher (Ork)", "type": "Humanoide", "stats": { "Reflexe": "2D", "Stärke": "4D", "Magie": "1D" }, "special": "Artefakt-Wut", "desc": "Kraftvolle Krieger mit runenbeschlagener, nasser Rüstung." },
+  { "name": "Dunst-Ghul", "type": "Untoter", "stats": { "Reflexe": "3D", "Stärke": "3D", "Magie": "2D" }, "special": "Lähmender Nebel", "desc": "Verstorbene, deren Atem zu dichtem, kaltem Dunst kondensiert." },
+  { "name": "Klippen-Spinne", "type": "Bestie", "stats": { "Reflexe": "4D", "Stärke": "2D+1", "Magie": "0D" }, "special": "Klebnetz (Nass)", "desc": "Ihre Netze glitzern wie Tau, sind aber stahlhart." },
+  { "name": "Artefakt-Wächter (Konstrukt)", "type": "Konstrukt", "stats": { "Reflexe": "1D", "Stärke": "5D", "Magie": "3D" }, "special": "Energie-Entzug", "desc": "Ein mechanischer Wächter, der durch Prismen-Energie betrieben wird." },
+  { "name": "Sumpf-Kobold", "type": "Humanoide", "stats": { "Reflexe": "3D+2", "Stärke": "1D", "Magie": "2D" }, "special": "Fallensteller", "desc": "Meister der Tarnung in den nebligen Randgebieten." },
+  { "name": "Regenbogen-Schlange", "type": "Bestie", "stats": { "Reflexe": "4D", "Stärke": "2D", "Magie": "2D" }, "special": "Hypnotisches Leuchten", "desc": "Ihre Schuppen brechen das Licht und verwirren Angreifer." },
+  { "name": "Eisenhand-Bandit", "type": "Mensch", "stats": { "Reflexe": "3D", "Stärke": "3D", "Magie": "1D" }, "special": "Schmutziger Trick", "desc": "Deserteure, die in den Ruinen rund um Fallcrest lauern." },
+  { "name": "Wasserfall-Elementar", "type": "Elementar", "stats": { "Reflexe": "3D", "Stärke": "4D", "Magie": "4D" }, "special": "Ertränken", "desc": "Eine lebendige Fontäne aus dem Nentir-Fluss." },
+  { "name": "Grab-Viper", "type": "Bestie", "stats": { "Reflexe": "4D+1", "Stärke": "1D+1", "Magie": "0D" }, "special": "Giftbiss", "desc": "Nistet in den feuchten Grüften der Oberstadt." },
+  { "name": "Schatten-Wolf", "type": "Bestie", "stats": { "Reflexe": "4D", "Stärke": "3D", "Magie": "1D" }, "special": "Rudel-Jagd", "desc": "Dunkle Bestien, die im Nebel fast unsichtbar sind." },
+  { "name": "Verderbter Kultist", "type": "Mensch", "stats": { "Reflexe": "2D", "Stärke": "2D", "Magie": "4D" }, "special": "Blut-Rune", "desc": "Betet dunkle Artefakte in den Kellern der Stadt an." },
+  { "name": "Harpyie der Klippen", "type": "Monstrosität", "stats": { "Reflexe": "4D", "Stärke": "2D", "Magie": "3D" }, "special": "Lockruf der Gischt", "desc": "Ihre Lieder vermischen sich mit dem Rauschen der Fälle." },
+  { "name": "Gallerte (Ooze)", "type": "Amorph", "stats": { "Reflexe": "1D", "Stärke": "4D", "Magie": "1D" }, "special": "Säure-Schleim", "desc": "Eine zähe, halbtransparente Masse, die in Pfützen lauert." },
+  { "name": "Dunkel-Zwerg (Duergar)", "type": "Humanoide", "stats": { "Reflexe": "2D", "Stärke": "4D", "Magie": "2D" }, "special": "Unsichtbarkeit", "desc": "Suchen in den tiefsten Minen nach Prismen-Erzen." },
+  { "name": "Höllenhund-Welpe", "type": "Dämon", "stats": { "Reflexe": "3D", "Stärke": "3D", "Magie": "2D" }, "special": "Feuer-Atem (Dampf)", "desc": "Stößt heißen Wasserdampf statt Flammen aus." },
+  { "name": "Wyrd-Rabe", "type": "Vogel", "stats": { "Reflexe": "5D", "Stärke": "1D", "Magie": "2D" }, "special": "Unglücks-Bote", "desc": "Beobachtet Reisende aus dem Nebel heraus." },
+  { "name": "Zombifizierter Bürger", "type": "Untoter", "stats": { "Reflexe": "1D", "Stärke": "3D", "Magie": "0D" }, "special": "Zäher Tod", "desc": "Ein ehemaliger Bewohner, aufgedunsen vom Flusswasser." }
+]

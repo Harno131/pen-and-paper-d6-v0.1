@@ -69,10 +69,12 @@ export default function AlignmentSelector({
                     ${readOnly ? 'cursor-default' : 'cursor-pointer'}
                   `}
                 >
-                  <div className="font-medium">{alignment.name.split(' ')[0]}</div>
-                  <div className="text-xs mt-1 opacity-80">
-                    {alignment.name.split(' ').slice(1).join(' ')}
-                  </div>
+                  <div className="font-medium">{alignment.name}</div>
+                  {alignment.nameEnglish && (
+                    <div className="text-xs mt-1 opacity-80">
+                      {alignment.nameEnglish}
+                    </div>
+                  )}
                 </button>
               )
             })

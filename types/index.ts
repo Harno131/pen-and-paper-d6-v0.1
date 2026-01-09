@@ -5,6 +5,7 @@ export type D6Value = string // Format: "1D", "1D+1", "2D", "2D+2", etc.
 
 export interface Alignment {
   name: string
+  nameEnglish?: string // Optional: Englische Bezeichnung
   description: string
   row: number
   col: number
@@ -25,6 +26,7 @@ export interface Skill {
   specializations: Specialization[] // Spezialisierungen (z.B. "Schwert" für bewaffneter Nahkampf)
   isWeakened?: boolean // Geschwächte Fertigkeit (kann ohne Fertigkeitspunkt/Blip nicht ausgeführt werden)
   isCustom?: boolean // Eigene Fertigkeit des Spielers
+  description?: string // Hover-Over-Text / Beschreibung der Fertigkeit
 }
 
 export interface Character {
@@ -59,6 +61,20 @@ export interface Character {
   // NPCs
   isNPC?: boolean // Nicht-Spieler-Charakter (Händler, Stadtwache, Monster, etc.)
   npcType?: 'händler' | 'stadtwache' | 'monster' | 'sonstiges' // Typ des NPCs
+  // Erweiterte NPC-Felder
+  npcProfession?: string // Beruf
+  npcAffiliation?: string // Zugehörigkeit
+  npcLocation?: string // Ort
+  npcAddress?: string // Adresse
+  npcBestSkills?: string[] // Beste Fähigkeiten (abhängig von Beruf und Rasse)
+  // Geheim-Attribute (dürfen nicht ins Tagebuch)
+  npcSecretAlignment?: { row: number; col: number } // Gesinnung (geheim)
+  npcSecretAgenda?: string // Agenda (geheim)
+  npcSecretQuestGiver?: boolean // Questgeber (geheim)
+  npcSecretHiddenHero?: boolean // Versteckter Held (geheim)
+  npcSecretNemesis?: string // Erzfeind (geheim)
+  npcSecretPerpetrator?: boolean // Täter (geheim)
+  npcSecretVictim?: boolean // Opfer (geheim)
 }
 
 export interface DeletedCharacter extends Character {
