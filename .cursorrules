@@ -26,3 +26,17 @@ Du bist ein Experte für UI/UX-Design und Fullstack-Entwicklung. Dein Ziel ist d
 - Wenn du UI-Komponenten entwirfst, schlage immer eine "Light"- und "Dark"-Variante vor, die den Regenbogen-Dunst-Effekt nutzt.
 - Bei der Generierung von Beispiel-Daten verwende Namen aus dem Fallcrest-Setting (z.B. Orte wie die "Mondsteinhalle" oder "Das Silberne Einhorn").
 - Achte darauf, dass das UI nicht durch zu viele "leuchtende" Effekte überladen wird – bleibe bei der Anweisung: "Magie ist da, aber dezent".
+
+## Deployment & Vercel Compatibility Rules
+- **Regex Constraints:** Avoid using the `u` or `y` flags in Regular Expressions. Use explicit ranges like `[a-zA-Z0-9À-ž]` instead of Unicode property escapes (`\p{L}`). Always place the hyphen `-` at the very end of a character class to avoid 'Range out of order' errors.
+- **Async Iteration:** When using `matchAll` or other iterators, always wrap them in `Array.from()` before iterating (e.g., `Array.from(text.matchAll(regex)).forEach(...)`) to satisfy downlevel iteration requirements.
+- **Type Integrity:** When modifying data structures (like the Blip system), immediately verify that the return types in `lib/supabase-data.ts` match the global Interfaces. Do not use `as any` unless absolutely necessary; instead, update the Interface or provide default values for all required properties.
+- **Naming Consistency:** Always check `app/spieler/page.tsx` and `app/spielleiter/page.tsx` for existing import names before renaming core utility functions in `lib/`.
+
+## D6 System Logic (Ego_Ultra)
+- **Attribute Start:** 2D (except Magic which starts at 0D).
+- **Blip Cost Scaling:** Costs increase every 3 steps.
+  - Steps 1-3: 1 Blip/step
+  - Steps 4-6: 2 Blips/step
+  - Steps 7-9: 3 Blips/step
+- **Efficiency Rule:** Attributes are expensive foundations; Skills and Specializations are cheaper "add-ons" that always start their cost scaling at Step 1 (1 Blip).
