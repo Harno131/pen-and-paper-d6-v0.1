@@ -500,14 +500,17 @@ export const getGroupSettings = async (groupId: string): Promise<CharacterCreati
     .eq('id', groupId)
     .single()
 
-  if (error || !data) return null
-
   const settings = data.settings as any
   return {
     maxAttributePoints: settings.maxAttributePoints || 7,
     maxSkillPoints: settings.maxSkillPoints || 8,
     maxBlibs: settings.maxBlibs || 4,
-    fantasyCalendar: settings.fantasyCalendar || undefined,
+    fantasyCalendar: settings.fantasyCalendar || {},
+    // Diese Felder fügen wir hinzu, um das Interface zu erfüllen:
+    maxAttributeDicePerAttribute: 4, 
+    maxSkillDicePerSkill: 3,
+    maxBlibsPerSpecialization: 3,
+    defaultStartBlips: settings.defaultStartBlips || 67
   }
 }
 
