@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 
 interface NamingSyllables {
-  [key: string]: {
+  [race: string]: {
     male: {
       prefix: string[];
       suffix: string[];
@@ -39,7 +39,9 @@ export default function NameGenerator({ onNameSelected }: NameGeneratorProps) {
     const raceData = namingData[selectedRace]
     if (!raceData) return ''
 
-    const genderData = raceData[selectedGender]
+// Wir sagen TypeScript mit "as 'male' | 'female'", 
+// dass der String sicher einer dieser beiden Werte ist.
+	const genderData = raceData[selectedGender as 'male' | 'female'];
     if (!genderData) return ''
 
     // Generiere Vorname
