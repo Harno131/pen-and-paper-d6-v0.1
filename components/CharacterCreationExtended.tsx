@@ -42,7 +42,7 @@ const BASE_VALUES: { [key: string]: string } = {
 const RACES = ['Mensch', 'Elf', 'Halb-Elf', 'Zwerg', 'Halbling', 'Gnom', 'Halbork', 'Drakonier', 'Andere']
 const CLASSES = ['Krieger', 'Magier', 'Dieb', 'Kleriker', 'Barde', 'Jäger', 'Händler', 'Handwerker', 'Gelehrter', 'Adliger', 'Bauer', 'Soldat', 'Andere']
 
-type CreationStep = 'basics' | 'skills'
+type CreationStep = 'basics' | 'skills' | 'attributes'
 
 export default function CharacterCreationExtended({
   playerName,
