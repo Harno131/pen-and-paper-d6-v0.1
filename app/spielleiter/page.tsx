@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings } from '@/types'
 import {
@@ -29,9 +29,11 @@ import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
 import { formatD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getMonthInfo, getWeekdayInfo, TIMES_OF_DAY } from '@/lib/fantasy-calendar'
+import { getAlignment } from '@/lib/alignments'
 import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
 import NameGenerator from '@/components/NameGenerator'
 import NpcCreationExtended from '@/components/NpcCreationExtended'
+import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 
 export default function SpielleiterPage() {
   const router = useRouter()
@@ -46,6 +48,8 @@ export default function SpielleiterPage() {
   const [selectedAuthor, setSelectedAuthor] = useState<string>('')
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
   const [newImage, setNewImage] = useState({ title: '', description: '', url: '' })
+  const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
+  const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
@@ -56,27 +60,37 @@ export default function SpielleiterPage() {
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
+  const [npcTagFilter, setNpcTagFilter] = useState('')
+  const [journalTagFilter, setJournalTagFilter] = useState('')
+  const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
+  const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
+
+  const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
+    if (!filter) return true
+    return (tags || []).some(tag => normalizeTag(tag) === filter)
+  }
+  const normalizedNpcTagFilter = normalizeTag(npcTagFilter)
+  const normalizedJournalTagFilter = normalizeTag(journalTagFilter)
+  const matchesJournalCategory = (entry: JournalEntry): boolean => {
+    if (journalCategory === 'all') return true
+    return matchesTag(entry.tags, journalCategory)
+  }
+  const journalWordCount = newJournalEntry.content.trim()
+    ? newJournalEntry.content.trim().split(/\s+/).length
+    : 0
+  const canGenerateJournalIllustration = journalWordCount >= 50 && !journalIllustrationUrl
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    setGroupId(localStorage.getItem('groupId'))
-    if (typeof window === 'undefined') return
-    
-    const role = localStorage.getItem('userRole')
-    const name = localStorage.getItem('playerName')
-    const groupId = localStorage.getItem('groupId')
-    
-    if (role !== 'spielleiter' || !name || !groupId) {
-      router.push('/')
-      return
+    if (editingEntry?.illustrationUrl) {
+      setJournalIllustrationUrl(editingEntry.illustrationUrl)
+      setJournalIllustrationSaved(true)
+    } else {
+      setJournalIllustrationUrl(null)
+      setJournalIllustrationSaved(false)
     }
+  }, [editingEntry])
 
-    // Validiere Gruppen-Mitgliedschaft beim Laden
-    validateGroupAccess(groupId, name, role)
-    loadData()
-  }, [router])
-
-  const validateGroupAccess = async (groupId: string, playerName: string, role: string) => {
+  const validateGroupAccess = useCallback(async (groupId: string, playerName: string, role: string) => {
     const { validateGroupMembership } = await import('@/lib/supabase-data')
     const validation = await validateGroupMembership(groupId, playerName)
     
@@ -88,9 +102,9 @@ export default function SpielleiterPage() {
       localStorage.removeItem('playerName')
       router.push('/')
     }
-  }
+  }, [router])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
     const { getCharactersAsync } = await import('@/lib/data')
     const allCharacters = await getCharactersAsync()
@@ -110,7 +124,26 @@ export default function SpielleiterPage() {
       const members = await getGroupMembers(currentGroupId)
       setGroupMembers(members)
     }
-  }
+  }, [groupId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setGroupId(localStorage.getItem('groupId'))
+    if (typeof window === 'undefined') return
+    
+    const role = localStorage.getItem('userRole')
+    const name = localStorage.getItem('playerName')
+    const groupId = localStorage.getItem('groupId')
+    
+    if (role !== 'spielleiter' || !name || !groupId) {
+      router.push('/')
+      return
+    }
+
+    // Validiere Gruppen-Mitgliedschaft beim Laden
+    validateGroupAccess(groupId, name, role)
+    loadData()
+  }, [router, validateGroupAccess, loadData])
 
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
@@ -119,7 +152,13 @@ export default function SpielleiterPage() {
     }, 5000) // Alle 5 Sekunden
 
     return () => clearInterval(interval)
-  }, [groupId])
+  }, [groupId, loadData])
+
+  useEffect(() => {
+    if (activeTab === 'journal' && typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [activeTab])
 
   const handleRestoreCharacter = (characterId: string) => {
     if (restoreCharacter(characterId)) {
@@ -210,12 +249,15 @@ export default function SpielleiterPage() {
     const title = contentParts.length > 1 ? contentParts[0].trim() : 'Eintrag'
     const content = contentParts.length > 1 ? contentParts.slice(1).join(':').trim() : newJournalEntry.content.trim()
 
+    const tags = extractTagsFromText(`${title} ${content}`)
     const entry: JournalEntry = {
       id: editingEntry?.id || Date.now().toString(),
       author,
       characterId,
       title,
       content,
+      tags,
+      illustrationUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
       timestamp: editingEntry?.timestamp || now,
       fantasyDate,
       timeOfDay: selectedTimeOfDay as any,
@@ -238,6 +280,8 @@ export default function SpielleiterPage() {
     setNewJournalEntry({ title: '', content: '' })
     setSelectedAuthor('')
     setSelectedTimeOfDay('Mittag')
+    setJournalIllustrationUrl(null)
+    setJournalIllustrationSaved(false)
   }
 
   const updateCharacterAttribute = (
@@ -723,12 +767,14 @@ export default function SpielleiterPage() {
                                                     char.npcBestSkills && char.npcBestSkills.length > 0 ? `Beste Fähigkeiten: ${char.npcBestSkills.join(', ')}` : '',
                                                   ].filter(Boolean).join('\n')
 
+                                                  const tags = extractTagsFromText(publicInfo)
                                                   const entry: JournalEntry = {
                                                     id: Date.now().toString(),
                                                     author,
                                                     characterId: char.id,
                                                     title: `NPC: ${char.name}`,
                                                     content: publicInfo,
+                                                    tags,
                                                     timestamp: now,
                                                     fantasyDate,
                                                     timeOfDay: selectedTimeOfDay as any,
@@ -787,7 +833,6 @@ export default function SpielleiterPage() {
                             Gesinnung
                           </td>
                           {visibleCharacters.map(char => {
-                            const { getAlignment } = require('@/lib/alignments')
                             const alignment = char.alignment ? getAlignment(char.alignment.row, char.alignment.col) : null
                             return (
                               <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[180px]">
@@ -967,12 +1012,35 @@ export default function SpielleiterPage() {
 
                     {/* NPC-Liste */}
                     {(() => {
-                      const npcs = groupCharacters.filter(char => char.isNPC)
+                      const groupCharacters = (groupId 
+                        ? characters.filter(char => {
+                            return true
+                          })
+                        : characters
+                      ).filter(char => 
+                        !char.deletedDate && 
+                        char.playerName !== 'Kobi' && 
+                        char.playerName !== 'Julia' && 
+                        char.playerName !== 'JJ' && 
+                        char.playerName !== 'Georg'
+                      )
+                      const npcs = groupCharacters
+                        .filter(char => char.isNPC)
+                        .filter(npc => matchesTag(npc.tags, normalizedNpcTagFilter))
                       if (npcs.length === 0) return null
 
                       return (
                         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                          <h2 className="text-2xl font-bold text-white mb-4">NPCs</h2>
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <h2 className="text-2xl font-bold text-white">NPCs</h2>
+                            <input
+                              type="text"
+                              value={npcTagFilter}
+                              onChange={(e) => setNpcTagFilter(e.target.value)}
+                              placeholder="Tag filtern (z.B. #fallcrest)"
+                              className="w-full md:w-72 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            />
+                          </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {npcs.map(npc => {
                               const alignment = npc.npcSecretAlignment ? getAlignment(npc.npcSecretAlignment.row, npc.npcSecretAlignment.col) : null
@@ -987,6 +1055,18 @@ export default function SpielleiterPage() {
                                       <h3 className="text-white font-semibold text-lg">{npc.name}</h3>
                                       {npc.npcProfession && (
                                         <p className="text-white/70 text-sm mt-1">{npc.npcProfession}</p>
+                                      )}
+                                      {npc.tags && npc.tags.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {npc.tags.map(tag => (
+                                            <span
+                                              key={tag}
+                                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-white/90 bg-gradient-to-br from-white/20 to-white/5 border border-white/20 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
+                                            >
+                                              #{tag}
+                                            </span>
+                                          ))}
+                                        </div>
                                       )}
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -1030,12 +1110,14 @@ export default function SpielleiterPage() {
                                             npc.npcBestSkills && npc.npcBestSkills.length > 0 ? `Beste Fähigkeiten: ${npc.npcBestSkills.join(', ')}` : '',
                                           ].filter(Boolean).join('\n')
 
+                                          const tags = extractTagsFromText(publicInfo)
                                           const entry: JournalEntry = {
                                             id: Date.now().toString(),
                                             author,
                                             characterId: npc.id,
                                             title: `NPC: ${npc.name}`,
                                             content: publicInfo,
+                                            tags,
                                             timestamp: now,
                                             fantasyDate,
                                             timeOfDay: selectedTimeOfDay as any,
@@ -1358,7 +1440,6 @@ export default function SpielleiterPage() {
               </div>
             </div>
 
-          </div>
         )}
 
         {/* Journal Tab */}
@@ -1427,6 +1508,60 @@ export default function SpielleiterPage() {
                   rows={4}
                   className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
+
+                {journalWordCount >= 50 && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {
+                        const label = encodeURIComponent(
+                          `Illustration – ${newJournalEntry.content.trim().slice(0, 24)}...`
+                        )
+                        const placeholderUrl = `https://placehold.co/768x432/png?text=${label}`
+                        setJournalIllustrationUrl(placeholderUrl)
+                        setJournalIllustrationSaved(false)
+                      }}
+                      disabled={!canGenerateJournalIllustration}
+                      className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                    >
+                      Illustration generieren
+                    </button>
+                  </div>
+                )}
+
+                {journalIllustrationUrl && (
+                  <div className="space-y-3">
+                    <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={journalIllustrationUrl}
+                        alt="Generierte Illustration"
+                        className="w-full rounded-lg border border-white/10"
+                      />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => {
+                          setJournalIllustrationUrl(null)
+                          setJournalIllustrationSaved(false)
+                        }}
+                        className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                      >
+                        Verwerfen / Neuer Versuch
+                      </button>
+                      <button
+                        onClick={() => setJournalIllustrationSaved(true)}
+                        className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                      >
+                        Speichern
+                      </button>
+                    </div>
+                    {journalIllustrationSaved && (
+                      <div className="text-green-400 text-sm">
+                        Illustration wird beim Speichern des Eintrags übernommen.
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="flex gap-3">
                   <button
@@ -1442,6 +1577,8 @@ export default function SpielleiterPage() {
                         setNewJournalEntry({ title: '', content: '' })
                         setSelectedAuthor('')
                         setSelectedTimeOfDay('Mittag')
+                        setJournalIllustrationUrl(null)
+                        setJournalIllustrationSaved(false)
                       }}
                       className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
                     >
@@ -1452,10 +1589,55 @@ export default function SpielleiterPage() {
               </div>
             </div>
 
+            {/* Bereiche + Sortierung + Tag-Suche */}
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'all', label: 'Journal' },
+                  { key: 'personen', label: 'Personen' },
+                  { key: 'monster', label: 'Monster' },
+                  { key: 'orte', label: 'Orte' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setJournalCategory(tab.key as any)}
+                    className={`px-3 py-2 rounded-full text-sm font-semibold transition-colors ${
+                      journalCategory === tab.key
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setJournalSortOrder(journalSortOrder === 'desc' ? 'asc' : 'desc')}
+                  className="ml-auto px-3 py-2 rounded-full text-sm font-semibold bg-white/10 text-white/80 hover:bg-white/20 transition-colors"
+                >
+                  {journalSortOrder === 'desc' ? 'Neueste zuerst' : 'Älteste zuerst'}
+                </button>
+              </div>
+              <div>
+                <label className="text-white/80 text-sm mb-2 block">Tag-Suche (z.B. #fallcrest)</label>
+                <input
+                  type="text"
+                  value={journalTagFilter}
+                  onChange={(e) => setJournalTagFilter(e.target.value)}
+                  placeholder="#fallcrest"
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+              </div>
+            </div>
+
             {/* Einträge */}
             <div className="space-y-4">
               {journalEntries
-                .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                .filter(entry => matchesJournalCategory(entry))
+                .filter(entry => matchesTag(entry.tags, normalizedJournalTagFilter))
+                .sort((a, b) => journalSortOrder === 'desc'
+                  ? b.timestamp.getTime() - a.timestamp.getTime()
+                  : a.timestamp.getTime() - b.timestamp.getTime()
+                )
                 .map((entry) => {
                   const fantasyDate = entry.fantasyDate 
                     ? formatFantasyDate(entry.fantasyDate, true, entry.timeOfDay)
@@ -1475,7 +1657,29 @@ export default function SpielleiterPage() {
                           <p className="text-white text-lg">
                             <span className="font-bold">{entry.title}:</span> {entry.content}
                           </p>
+                          {entry.tags && entry.tags.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {entry.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-white/90 bg-gradient-to-br from-white/20 to-white/5 border border-white/20 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
+                        {entry.illustrationUrl && (
+                          <div className="mt-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={entry.illustrationUrl}
+                              alt={`Illustration zu ${entry.title}`}
+                              className="w-full max-w-2xl rounded-lg border border-white/10"
+                            />
+                          </div>
+                        )}
                         <div className="text-right ml-4">
                           {fantasyDate && (
                             <div className="text-white/90 text-sm font-semibold mb-1">
@@ -1711,6 +1915,7 @@ export default function SpielleiterPage() {
                 />
                 {newImage.url && (
                   <div className="bg-black/20 rounded-lg p-4 border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={newImage.url}
                       alt="Vorschau"
@@ -1749,6 +1954,7 @@ export default function SpielleiterPage() {
                         <p className="text-white/80 mb-4">{image.description}</p>
                       )}
                       <div className="bg-black/20 rounded-lg p-4 border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={image.url}
                           alt={image.title || 'Geteiltes Bild'}

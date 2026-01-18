@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FantasyCalendarSettings } from '@/types'
 import { MONTHS } from '@/lib/fantasy-calendar'
 import { getGroupSettings, saveGroupSettings } from '@/lib/supabase-data'
@@ -14,11 +14,7 @@ export default function FantasyCalendarStartDate({ groupId }: FantasyCalendarSta
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    loadStartDate()
-  }, [groupId])
-
-  const loadStartDate = async () => {
+  const loadStartDate = useCallback(async () => {
     setLoading(true)
     const settings = await getGroupSettings(groupId)
     if (settings?.fantasyCalendar?.startDate) {
@@ -28,7 +24,11 @@ export default function FantasyCalendarStartDate({ groupId }: FantasyCalendarSta
       setStartDate({ year: 1, month: 1, day: 1 })
     }
     setLoading(false)
-  }
+  }, [groupId])
+
+  useEffect(() => {
+    loadStartDate()
+  }, [loadStartDate])
 
   const handleSave = async () => {
     if (!startDate) return

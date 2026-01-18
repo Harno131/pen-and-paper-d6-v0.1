@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { validateGroupMembership } from '@/lib/supabase-data'
@@ -22,20 +22,7 @@ export default function Home() {
   const [isChecking, setIsChecking] = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
-    // Prüfe ob Supabase konfiguriert ist
-    const supabase = createSupabaseClient()
-    setHasSupabase(supabase !== null)
-
-    // Wenn Supabase verfügbar ist, prüfe ob bereits eine Gruppe ausgewählt ist
-    if (supabase) {
-      checkExistingGroup()
-    } else {
-      setIsChecking(false)
-    }
-  }, [])
-
-  const checkExistingGroup = async () => {
+  const checkExistingGroup = useCallback(async () => {
     if (typeof window === 'undefined') {
       setIsChecking(false)
       return
@@ -71,7 +58,20 @@ export default function Home() {
     }
     
     setIsChecking(false)
-  }
+  }, [router])
+
+  useEffect(() => {
+    // Prüfe ob Supabase konfiguriert ist
+    const supabase = createSupabaseClient()
+    setHasSupabase(supabase !== null)
+
+    // Wenn Supabase verfügbar ist, prüfe ob bereits eine Gruppe ausgewählt ist
+    if (supabase) {
+      checkExistingGroup()
+    } else {
+      setIsChecking(false)
+    }
+  }, [checkExistingGroup])
 
   const handleGroupSelected = (groupId: string, groupCode: string, playerName: string, role: 'spielleiter' | 'spieler') => {
     if (typeof window === 'undefined') return

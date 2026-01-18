@@ -1,10 +1,11 @@
 import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings } from '@/types'
+import { extractTagsFromText } from '@/lib/tags'
 import { createSupabaseClient } from './supabase'
 
 // Supabase-basierte Datenbank-Funktionen
 // Fallback auf localStorage wenn Supabase nicht verfügbar
 
-const useSupabase = () => {
+const isSupabaseAvailable = () => {
   const supabase = createSupabaseClient()
   return supabase !== null
 }
@@ -290,6 +291,8 @@ export const getCharactersFromSupabase = async (groupId: string): Promise<Charac
     inventory: char.inventory || [],
     alignment: char.alignment,
     notes: char.notes,
+    profileImageUrl: char.profile_image_url || undefined,
+    tags: Array.isArray(char.tags) ? char.tags : undefined,
     createdDate: char.created_date ? new Date(char.created_date) : undefined,
     lastPlayedDate: char.last_played_date ? new Date(char.last_played_date) : undefined,
     deletedDate: char.deleted_date ? new Date(char.deleted_date) : undefined,
@@ -304,6 +307,9 @@ export const getCharactersFromSupabase = async (groupId: string): Promise<Charac
 export const saveCharacterToSupabase = async (groupId: string, character: Character): Promise<boolean> => {
   const supabase = createSupabaseClient()
   if (!supabase) return false
+
+  const tagsFromNotes = extractTagsFromText(character.notes || '')
+  const tags = character.tags && character.tags.length > 0 ? character.tags : tagsFromNotes
 
   const { error } = await supabase
     .from('characters')
@@ -322,6 +328,8 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
       inventory: character.inventory || [],
       alignment: character.alignment,
       notes: character.notes,
+      profile_image_url: character.profileImageUrl || null,
+      tags: tags.length > 0 ? tags : null,
       created_date: character.createdDate?.toISOString(),
       last_played_date: character.lastPlayedDate?.toISOString(),
       deleted_date: character.deletedDate?.toISOString(),
@@ -458,6 +466,8 @@ export const getJournalEntriesFromSupabase = async (groupId: string): Promise<Jo
     characterId: entry.character_id,
     title: entry.title,
     content: entry.content,
+    tags: Array.isArray(entry.tags) ? entry.tags : undefined,
+    illustrationUrl: entry.illustration_url || undefined,
     timestamp: new Date(entry.timestamp),
     fantasyDate: entry.fantasy_date ? {
       year: entry.fantasy_date.year,
@@ -473,6 +483,9 @@ export const saveJournalEntryToSupabase = async (groupId: string, entry: Journal
   const supabase = createSupabaseClient()
   if (!supabase) return false
 
+  const tagsFromContent = extractTagsFromText(`${entry.title} ${entry.content}`)
+  const tags = entry.tags && entry.tags.length > 0 ? entry.tags : tagsFromContent
+
   const { error } = await supabase
     .from('journal_entries')
     .insert({
@@ -482,6 +495,8 @@ export const saveJournalEntryToSupabase = async (groupId: string, entry: Journal
       character_id: entry.characterId || null,
       title: entry.title,
       content: entry.content,
+      tags,
+      illustration_url: entry.illustrationUrl || null,
       timestamp: entry.timestamp.toISOString(),
       fantasy_date: entry.fantasyDate || null,
       time_of_day: entry.timeOfDay || null,

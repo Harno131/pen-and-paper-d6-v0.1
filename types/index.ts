@@ -45,6 +45,8 @@ export interface Character {
   inventory: Item[]
   alignment?: { row: number; col: number } // Ausgewählte Gesinnung
   notes?: string
+  profileImageUrl?: string
+  tags?: string[]
   createdDate?: Date // Erstellt am
   lastPlayedDate?: Date // Zuletzt gespielt am
   deletedDate?: Date // Gelöscht am (soft delete)
@@ -113,6 +115,8 @@ export interface JournalEntry {
   characterId?: string
   title: string
   content: string
+  tags?: string[]
+  illustrationUrl?: string
   timestamp: Date
   fantasyDate?: {
     year: number

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Character } from '@/types'
 import { getAlignment } from '@/lib/alignments'
+import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 import NameGenerator from './NameGenerator'
 import AlignmentSelector from './AlignmentSelector'
 
@@ -78,6 +79,9 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
   const [location, setLocation] = useState(editingNpc?.npcLocation || '')
   const [address, setAddress] = useState(editingNpc?.npcAddress || '')
   const [bestSkills, setBestSkills] = useState<string[]>(editingNpc?.npcBestSkills || [])
+  const [tagInput, setTagInput] = useState(
+    editingNpc?.tags && editingNpc.tags.length > 0 ? editingNpc.tags.map(tag => `#${tag}`).join(' ') : ''
+  )
   
   // Geheim-Attribute
   const [secretAlignment, setSecretAlignment] = useState<{ row: number; col: number } | undefined>(editingNpc?.npcSecretAlignment)
@@ -143,6 +147,14 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       return
     }
 
+    const tagsFromHash = extractTagsFromText(tagInput)
+    const tags = tagsFromHash.length > 0
+      ? tagsFromHash
+      : tagInput
+          .split(/[,\s]+/)
+          .map(tag => normalizeTag(tag))
+          .filter(Boolean)
+
     const npc: Character = {
       id: editingNpc?.id || `npc-${Date.now()}`,
       name: name.trim(),
@@ -176,6 +188,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       npcSecretNemesis: secretNemesis || undefined,
       npcSecretPerpetrator: secretPerpetrator || undefined,
       npcSecretVictim: secretVictim || undefined,
+      tags: tags.length > 0 ? tags : undefined,
       createdDate: editingNpc?.createdDate || new Date(),
       lastPlayedDate: new Date(),
     }
@@ -327,6 +340,36 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
                 <option key={p} value={p} className="bg-slate-800">{p}</option>
               ))}
             </select>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="text-white/90 font-medium block mb-2">Tags (z.B. #personen #monster #fallcrest)</label>
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              placeholder="#personen #monster #orte"
+              className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+            />
+            {tagInput.trim() && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(extractTagsFromText(tagInput).length > 0
+                  ? extractTagsFromText(tagInput)
+                  : tagInput
+                      .split(/[,\s]+/)
+                      .map(tag => normalizeTag(tag))
+                      .filter(Boolean)
+                ).map(tag => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-white/90 bg-gradient-to-br from-white/20 to-white/5 border border-white/20 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Beste Fähigkeiten (automatisch berechnet) */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getGroupsByPlayer, getGroupById } from '@/lib/supabase-data'
 
 interface GroupManagerProps {
@@ -12,16 +12,16 @@ export default function GroupManager({ playerName, onGroupSelected }: GroupManag
   const [groups, setGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadGroups()
-  }, [playerName])
-
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     setLoading(true)
     const playerGroups = await getGroupsByPlayer(playerName)
     setGroups(playerGroups)
     setLoading(false)
-  }
+  }, [playerName])
+
+  useEffect(() => {
+    loadGroups()
+  }, [loadGroups])
 
   const handleSelectGroup = async (group: any) => {
     // Hole vollständige Gruppen-Daten

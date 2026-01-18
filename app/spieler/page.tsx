@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Character, JournalEntry, SharedImage } from '@/types'
 import { 
@@ -23,6 +23,7 @@ import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import CharacterCreationExtended from '@/components/CharacterCreationExtended'
 import SkillDiceRoller from '@/components/SkillDiceRoller'
+import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 
 export default function SpielerPage() {
   const router = useRouter()
@@ -37,25 +38,28 @@ export default function SpielerPage() {
   const [showCharacterCreation, setShowCharacterCreation] = useState(false)
   const [playerName, setPlayerName] = useState('')
   const [selectedSkillForRoll, setSelectedSkillForRoll] = useState<{ skill: any; specialization?: any } | null>(null)
+  const [journalTagFilter, setJournalTagFilter] = useState('')
+  const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
+  const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
+  const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
+  const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
   const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
 
-  useEffect(() => {
-    const role = localStorage.getItem('userRole')
-    const name = localStorage.getItem('playerName')
-    const groupId = localStorage.getItem('groupId')
-    
-    if (role !== 'spieler' || !name || !groupId) {
-      router.push('/')
-      return
-    }
+  const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
+    if (!filter) return true
+    return (tags || []).some(tag => normalizeTag(tag) === filter)
+  }
+  const normalizedJournalTagFilter = normalizeTag(journalTagFilter)
+  const matchesJournalCategory = (entry: JournalEntry): boolean => {
+    if (journalCategory === 'all') return true
+    return matchesTag(entry.tags, journalCategory)
+  }
+  const journalWordCount = newJournalEntry.content.trim()
+    ? newJournalEntry.content.trim().split(/\s+/).length
+    : 0
+  const canGenerateJournalIllustration = journalWordCount >= 50 && !journalIllustrationUrl
 
-    // Validiere Gruppen-Mitgliedschaft beim Laden
-    validateGroupAccess(groupId, name, role)
-    setPlayerName(name)
-    loadData()
-  }, [router])
-
-  const validateGroupAccess = async (groupId: string, playerName: string, role: string) => {
+  const validateGroupAccess = useCallback(async (groupId: string, playerName: string, role: string) => {
     const { validateGroupMembership } = await import('@/lib/supabase-data')
     const validation = await validateGroupMembership(groupId, playerName)
     
@@ -67,9 +71,9 @@ export default function SpielerPage() {
       localStorage.removeItem('playerName')
       router.push('/')
     }
-  }
+  }, [router])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const name = localStorage.getItem('playerName') || ''
     
     // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
@@ -92,7 +96,23 @@ export default function SpielerPage() {
     const entries = await getJournalEntries()
     setJournalEntries(entries)
     setSharedImages(getSharedImages())
-  }
+  }, [selectedCharacter])
+
+  useEffect(() => {
+    const role = localStorage.getItem('userRole')
+    const name = localStorage.getItem('playerName')
+    const groupId = localStorage.getItem('groupId')
+    
+    if (role !== 'spieler' || !name || !groupId) {
+      router.push('/')
+      return
+    }
+
+    // Validiere Gruppen-Mitgliedschaft beim Laden
+    validateGroupAccess(groupId, name, role)
+    setPlayerName(name)
+    loadData()
+  }, [router, validateGroupAccess, loadData])
 
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
@@ -101,7 +121,23 @@ export default function SpielerPage() {
     }, 5000) // Alle 5 Sekunden
 
     return () => clearInterval(interval)
-  }, [])
+  }, [loadData])
+
+  useEffect(() => {
+    if (activeTab === 'journal' && typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    if (editingEntry?.illustrationUrl) {
+      setJournalIllustrationUrl(editingEntry.illustrationUrl)
+      setJournalIllustrationSaved(true)
+    } else {
+      setJournalIllustrationUrl(null)
+      setJournalIllustrationSaved(false)
+    }
+  }, [editingEntry])
 
   const handleCharacterSelect = (character: Character) => {
     setSelectedCharacter(character)
@@ -147,12 +183,15 @@ export default function SpielerPage() {
     const title = contentParts.length > 1 ? contentParts[0].trim() : 'Eintrag'
     const content = contentParts.length > 1 ? contentParts.slice(1).join(':').trim() : newJournalEntry.content.trim()
     
+    const tags = extractTagsFromText(`${title} ${content}`)
     const entry: JournalEntry = {
       id: editingEntry?.id || Date.now().toString(),
       author: name,
       characterId: selectedCharacter?.id || editingEntry?.characterId,
       title,
       content,
+      tags,
+      illustrationUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
       timestamp: editingEntry?.timestamp || now,
       fantasyDate,
       timeOfDay: selectedTimeOfDay as any,
@@ -173,6 +212,8 @@ export default function SpielerPage() {
     
     setNewJournalEntry({ title: '', content: '' })
     setSelectedTimeOfDay('Mittag')
+    setJournalIllustrationUrl(null)
+    setJournalIllustrationSaved(false)
   }
 
   const handleAlignmentSelect = (row: number, col: number) => {
@@ -1064,6 +1105,60 @@ export default function SpielerPage() {
                   rows={4}
                   className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
+
+                {journalWordCount >= 50 && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {
+                        const label = encodeURIComponent(
+                          `Illustration – ${newJournalEntry.content.trim().slice(0, 24)}...`
+                        )
+                        const placeholderUrl = `https://placehold.co/768x432/png?text=${label}`
+                        setJournalIllustrationUrl(placeholderUrl)
+                        setJournalIllustrationSaved(false)
+                      }}
+                      disabled={!canGenerateJournalIllustration}
+                      className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                    >
+                      Illustration generieren
+                    </button>
+                  </div>
+                )}
+
+                {journalIllustrationUrl && (
+                  <div className="space-y-3">
+                    <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={journalIllustrationUrl}
+                        alt="Generierte Illustration"
+                        className="w-full rounded-lg border border-white/10"
+                      />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => {
+                          setJournalIllustrationUrl(null)
+                          setJournalIllustrationSaved(false)
+                        }}
+                        className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                      >
+                        Verwerfen / Neuer Versuch
+                      </button>
+                      <button
+                        onClick={() => setJournalIllustrationSaved(true)}
+                        className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                      >
+                        Speichern
+                      </button>
+                    </div>
+                    {journalIllustrationSaved && (
+                      <div className="text-green-400 text-sm">
+                        Illustration wird beim Speichern des Eintrags übernommen.
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="flex gap-3">
                   <button
@@ -1078,6 +1173,8 @@ export default function SpielerPage() {
                         setEditingEntry(null)
                         setNewJournalEntry({ title: '', content: '' })
                         setSelectedTimeOfDay('Mittag')
+                        setJournalIllustrationUrl(null)
+                        setJournalIllustrationSaved(false)
                       }}
                       className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
                     >
@@ -1088,10 +1185,55 @@ export default function SpielerPage() {
               </div>
             </div>
 
+            {/* Bereiche + Sortierung + Tag-Suche */}
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'all', label: 'Journal' },
+                  { key: 'personen', label: 'Personen' },
+                  { key: 'monster', label: 'Monster' },
+                  { key: 'orte', label: 'Orte' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setJournalCategory(tab.key as any)}
+                    className={`px-3 py-2 rounded-full text-sm font-semibold transition-colors ${
+                      journalCategory === tab.key
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setJournalSortOrder(journalSortOrder === 'desc' ? 'asc' : 'desc')}
+                  className="ml-auto px-3 py-2 rounded-full text-sm font-semibold bg-white/10 text-white/80 hover:bg-white/20 transition-colors"
+                >
+                  {journalSortOrder === 'desc' ? 'Neueste zuerst' : 'Älteste zuerst'}
+                </button>
+              </div>
+              <div>
+                <label className="text-white/80 text-sm mb-2 block">Tag-Suche (z.B. #fallcrest)</label>
+                <input
+                  type="text"
+                  value={journalTagFilter}
+                  onChange={(e) => setJournalTagFilter(e.target.value)}
+                  placeholder="#fallcrest"
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+              </div>
+            </div>
+
             {/* Einträge */}
             <div className="space-y-4">
               {journalEntries
-                .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                .filter(entry => matchesJournalCategory(entry))
+                .filter(entry => matchesTag(entry.tags, normalizedJournalTagFilter))
+                .sort((a, b) => journalSortOrder === 'desc'
+                  ? b.timestamp.getTime() - a.timestamp.getTime()
+                  : a.timestamp.getTime() - b.timestamp.getTime()
+                )
                 .map((entry) => {
                   const fantasyDate = entry.fantasyDate 
                     ? formatFantasyDate(entry.fantasyDate, true)
@@ -1111,7 +1253,29 @@ export default function SpielerPage() {
                           <p className="text-white text-lg">
                             <span className="font-bold">{entry.title}:</span> {entry.content}
                           </p>
+                          {entry.tags && entry.tags.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {entry.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-white/90 bg-gradient-to-br from-white/20 to-white/5 border border-white/20 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
+                        {entry.illustrationUrl && (
+                          <div className="mt-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={entry.illustrationUrl}
+                              alt={`Illustration zu ${entry.title}`}
+                              className="w-full max-w-2xl rounded-lg border border-white/10"
+                            />
+                          </div>
+                        )}
                         <div className="text-right ml-4">
                           {fantasyDate && (
                             <div className="text-white/90 text-sm font-semibold mb-1">
@@ -1211,6 +1375,7 @@ export default function SpielerPage() {
                     <p className="text-white/80 mb-4">{image.description}</p>
                   )}
                   <div className="bg-black/20 rounded-lg p-4 border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image.url}
                       alt={image.title || 'Geteiltes Bild'}

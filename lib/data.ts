@@ -20,7 +20,7 @@ import {
 } from './file-storage'
 
 // Hybrid: Supabase wenn verfügbar, sonst localStorage
-const useSupabase = (): boolean => {
+const isSupabaseAvailable = (): boolean => {
   if (typeof window === 'undefined') return false
   const supabase = createSupabaseClient()
   const groupId = localStorage.getItem('groupId')
@@ -49,7 +49,7 @@ export const saveCharacters = (characters: Character[]): void => {
   if (typeof window === 'undefined') return
   
   // Versuche auch Supabase zu speichern (async im Hintergrund)
-  if (useSupabase()) {
+  if (isSupabaseAvailable()) {
     const groupId = localStorage.getItem('groupId')
     if (groupId) {
       // Speichere im Hintergrund (nicht blockierend)
@@ -86,7 +86,7 @@ export const getCharactersAsync = async (): Promise<Character[]> => {
   }
   
   // 2. Prüfe Supabase
-  if (useSupabase()) {
+  if (isSupabaseAvailable()) {
     const characters = await getCharactersFromSupabase(groupId)
     if (characters.length > 0) {
       // Auch in localStorage speichern für Offline-Fallback
@@ -128,7 +128,7 @@ export const saveCharacterAsync = async (character: Character): Promise<void> =>
   }
   
   // Speichere in Supabase (wenn verfügbar)
-  if (useSupabase() && groupId) {
+  if (isSupabaseAvailable() && groupId) {
     await saveCharacterToSupabase(groupId, character).catch(err => {
       console.warn('Fehler beim Speichern in Supabase:', err)
     })
@@ -151,7 +151,7 @@ export const getJournalEntries = async (): Promise<JournalEntry[]> => {
   }
   
   // 2. Prüfe Supabase
-  if (useSupabase() && groupId) {
+  if (isSupabaseAvailable() && groupId) {
     const { getJournalEntriesFromSupabase } = await import('./supabase-data')
     const entries = await getJournalEntriesFromSupabase(groupId)
     if (entries.length > 0) {
@@ -197,7 +197,7 @@ export const saveJournalEntry = async (entry: JournalEntry): Promise<void> => {
   }
   
   // Speichere in Supabase wenn verfügbar
-  if (useSupabase() && groupId) {
+  if (isSupabaseAvailable() && groupId) {
     const { saveJournalEntryToSupabase } = await import('./supabase-data')
     await saveJournalEntryToSupabase(groupId, entry).catch(err => {
       console.warn('Fehler beim Speichern in Supabase:', err)

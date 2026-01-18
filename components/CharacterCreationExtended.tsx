@@ -60,6 +60,9 @@ export default function CharacterCreationExtended({
   const [showOnlyLearned, setShowOnlyLearned] = useState(false)
   const [newSpecialization, setNewSpecialization] = useState({ name: '', skillId: '' })
   const [settings, setSettings] = useState(getCharacterCreationSettings())
+  const [charTraits, setCharTraits] = useState('')
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
+  const [profileImageSaved, setProfileImageSaved] = useState(false)
 
   useEffect(() => {
     const skills = getAvailableSkills()
@@ -100,6 +103,21 @@ export default function CharacterCreationExtended({
     sum + skill.specializations.reduce((specSum, spec) => specSum + spec.blibs, 0), 0
   )
   const remainingBlibs = settings.maxBlibs - usedBlibs
+
+  const traitList = charTraits
+    .split(/\n|,|;/)
+    .map(t => t.trim())
+    .filter(Boolean)
+  const traitCount = traitList.length
+  const wordCount = charTraits.trim() ? charTraits.trim().split(/\s+/).length : 0
+  const canGenerateProfileImage = (traitCount >= 5 || wordCount >= 50) && traitCount <= 5 && !profileImageUrl
+
+  const generatePlaceholderProfileImage = () => {
+    const label = encodeURIComponent(characterName ? `${characterName} – Profilbild` : 'Profilbild')
+    const placeholderUrl = `https://placehold.co/512x512/png?text=${label}`
+    setProfileImageUrl(placeholderUrl)
+    setProfileImageSaved(false)
+  }
 
   const handleAttributeBonusChange = (attrName: string, delta: number) => {
     const current = attributeBonuses[attrName] || 0
@@ -302,6 +320,7 @@ export default function CharacterCreationExtended({
       attributePointsUsed: usedAttributePoints,
       skillPointsUsed: usedSkillPoints,
       blibsUsed: usedBlibs,
+      profileImageUrl: profileImageSaved ? profileImageUrl || undefined : undefined,
     }
 
     const updated = [...characters, newCharacter]
@@ -396,6 +415,70 @@ export default function CharacterCreationExtended({
                     <option value="weiblich" className="bg-slate-800">weiblich</option>
                     <option value="divers" className="bg-slate-800">divers</option>
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-white/90 mb-2 font-medium">Zusätzliche Merkmale (bis zu 5):</label>
+                <textarea
+                  value={charTraits}
+                  onChange={(e) => setCharTraits(e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  placeholder="z.B. narbiges Gesicht&#10;trägt einen blauen Schal&#10;hat leuchtende Augen"
+                />
+                <div className="flex items-center justify-between mt-2 text-xs">
+                  <span className="text-white/70">
+                    Merkmale: {traitCount}/5 · Wörter: {wordCount}/50
+                  </span>
+                  {traitCount > 5 && (
+                    <span className="text-yellow-400">Bitte maximal 5 Merkmale verwenden.</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                <div className="flex flex-col gap-4">
+                  <button
+                    onClick={generatePlaceholderProfileImage}
+                    disabled={!canGenerateProfileImage}
+                    className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                  >
+                    Profilbild generieren
+                  </button>
+
+                  {profileImageUrl && (
+                    <div className="space-y-3">
+                      <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={profileImageUrl}
+                          alt="Generiertes Profilbild"
+                          className="w-full max-w-sm rounded-lg border border-white/10"
+                        />
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={() => {
+                            setProfileImageUrl(null)
+                            setProfileImageSaved(false)
+                          }}
+                          className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                        >
+                          Verwerfen / Neuer Versuch
+                        </button>
+                        <button
+                          onClick={() => setProfileImageSaved(true)}
+                          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                        >
+                          Speichern
+                        </button>
+                      </div>
+                      {profileImageSaved && (
+                        <div className="text-green-400 text-sm">Profilbild wird beim Speichern des Charakters übernommen.</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
