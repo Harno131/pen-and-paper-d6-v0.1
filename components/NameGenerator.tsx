@@ -3,15 +3,17 @@
 import { useState, useEffect } from 'react'
 
 interface NamingSyllables {
-  [race: string]: {
-    male: {
+  [key: string]: {
+    male?: {
       prefix: string[];
       suffix: string[];
     };
-    female: {
+    female?: {
       prefix: string[];
       suffix: string[];
     };
+    part1?: string[];
+    part2?: string[];
   };
 }
 
@@ -33,32 +35,32 @@ export default function NameGenerator({ onNameSelected }: NameGeneratorProps) {
       .catch(err => console.error('Fehler beim Laden der Namensdaten:', err))
   }, [])
 
-  const generateName = (): string => {
-    if (!namingData) return ''
-
-    const raceData = namingData[selectedRace]
+  const generateName = () => {
+    const raceData = namingSyllables[selectedRace]
     if (!raceData) return ''
 
-// Wir sagen TypeScript mit "as 'male' | 'female'", 
-// dass der String sicher einer dieser beiden Werte ist.
-	const genderData = raceData[selectedGender as 'male' | 'female'];
-    if (!genderData) return ''
+    // Zugriff auf Vornamen-Daten mit Type-Cast für Gender
+    const genderData = raceData[selectedGender as 'male' | 'female']
+    if (!genderData || !genderData.prefix || !genderData.suffix) return ''
 
     // Generiere Vorname
-    const firstNamePrefix = genderData.prefix[Math.floor(Math.random() * genderData.prefix.length)]
-    const firstNameSuffix = genderData.suffix[Math.floor(Math.random() * genderData.suffix.length)]
-    const firstName = firstNamePrefix + firstNameSuffix
+    const prefix = genderData.prefix[Math.floor(Math.random() * genderData.prefix.length)]
+    const suffix = genderData.suffix[Math.floor(Math.random() * genderData.suffix.length)]
+    const firstName = prefix + suffix
 
-    // Generiere Nachname
+    // Nachnamen-Logik
     const surnameKey = `${selectedRace}_surnames`
-    const surnameData = namingData[surnameKey]
-    if (!surnameData) return firstName
+    const surnameData = namingSyllables[surnameKey]
+
+    // Falls keine Nachnamen-Daten da sind (z.B. bei Halborks), nur Vorname zurückgeben
+    if (!surnameData || !surnameData.part1 || !surnameData.part2) {
+      return firstName
+    }
 
     const surnamePart1 = surnameData.part1[Math.floor(Math.random() * surnameData.part1.length)]
     const surnamePart2 = surnameData.part2[Math.floor(Math.random() * surnameData.part2.length)]
-    const surname = surnamePart1 + surnamePart2
-
-    return `${firstName} ${surname}`
+    
+    return `${firstName} ${surnamePart1}${surnamePart2}`
   }
 
   const handleGenerate = () => {
