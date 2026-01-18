@@ -3,17 +3,16 @@
 import { useState, useEffect } from 'react'
 
 interface NamingSyllables {
-  [race: string]: {
-    [gender: string]: {
-      prefix: string[]
-      suffix: string[]
-    }
-  }
-  [raceSurnames: string]: {
-    type: string
-    part1: string[]
-    part2: string[]
-  }
+  [key: string]: {
+    male: {
+      prefix: string[];
+      suffix: string[];
+    };
+    female: {
+      prefix: string[];
+      suffix: string[];
+    };
+  };
 }
 
 interface NameGeneratorProps {
