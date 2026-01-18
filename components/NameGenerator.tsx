@@ -35,8 +35,11 @@ export default function NameGenerator({ onNameSelected }: NameGeneratorProps) {
       .catch(err => console.error('Fehler beim Laden der Namensdaten:', err))
   }, [])
 
-  const generateName = () => {
-    const raceData = namingSyllables[selectedRace]
+const generateName = () => {
+    // Hier lag der Fehler: namingData statt namingSyllables nutzen
+    if (!namingData) return ''
+    
+    const raceData = namingData[selectedRace]
     if (!raceData) return ''
 
     // Zugriff auf Vornamen-Daten mit Type-Cast für Gender
@@ -50,7 +53,7 @@ export default function NameGenerator({ onNameSelected }: NameGeneratorProps) {
 
     // Nachnamen-Logik
     const surnameKey = `${selectedRace}_surnames`
-    const surnameData = namingSyllables[surnameKey]
+    const surnameData = namingData[surnameKey]
 
     // Falls keine Nachnamen-Daten da sind (z.B. bei Halborks), nur Vorname zurückgeben
     if (!surnameData || !surnameData.part1 || !surnameData.part2) {
