@@ -46,6 +46,7 @@ export interface Character {
   alignment?: { row: number; col: number } // Ausgewählte Gesinnung
   notes?: string
   profileImageUrl?: string
+  imageUrl?: string
   tags?: string[]
   createdDate?: Date // Erstellt am
   lastPlayedDate?: Date // Zuletzt gespielt am
@@ -117,6 +118,7 @@ export interface JournalEntry {
   content: string
   tags?: string[]
   illustrationUrl?: string
+  imageUrl?: string
   timestamp: Date
   fantasyDate?: {
     year: number
@@ -125,6 +127,23 @@ export interface JournalEntry {
     weekday: number
   }
   timeOfDay?: TimeOfDay
+}
+
+export interface Bestiary {
+  id: string
+  name: string
+  type: string
+  level?: number
+  race?: string
+  description?: string
+  abilities?: string[]
+  tags?: string[]
+  attributes: { [key: string]: D6Value }
+  maxHp: number
+  fallcrestTwist: string
+  imageUrl?: string
+  createdAt?: Date
+  updatedAt?: Date
 }
 
 export interface FantasyCalendarSettings {

@@ -38,6 +38,9 @@ const BASE_VALUES: { [key: string]: string } = {
   Magie: '0D',
 }
 
+const RACES = ['Mensch', 'Elf', 'Halb-Elf', 'Zwerg', 'Halbling', 'Gnom', 'Halbork', 'Drakonier', 'Andere']
+const CLASSES = ['Krieger', 'Magier', 'Dieb', 'Kleriker', 'Barde', 'Jäger', 'Händler', 'Handwerker', 'Gelehrter', 'Adliger', 'Bauer', 'Soldat', 'Andere']
+
 type CreationStep = 'basics' | 'attributes' | 'skills'
 
 export default function CharacterCreationExtended({
@@ -48,7 +51,9 @@ export default function CharacterCreationExtended({
   const [step, setStep] = useState<CreationStep>('basics')
   const [characterName, setCharacterName] = useState('')
   const [className, setClassName] = useState('Abenteurer')
+  const [otherClass, setOtherClass] = useState('')
   const [race, setRace] = useState('Mensch')
+  const [otherRace, setOtherRace] = useState('')
   const [age, setAge] = useState('')
   const [gender, setGender] = useState('')
   const [attributeBonuses, setAttributeBonuses] = useState<{ [key: string]: number }>({})
@@ -63,6 +68,9 @@ export default function CharacterCreationExtended({
   const [charTraits, setCharTraits] = useState('')
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [profileImageSaved, setProfileImageSaved] = useState(false)
+  const [visibleEquipment, setVisibleEquipment] = useState('')
+  const [profileImageLoading, setProfileImageLoading] = useState(false)
+  const [portraitFallcrestFilter, setPortraitFallcrestFilter] = useState(false)
 
   useEffect(() => {
     const skills = getAvailableSkills()
@@ -112,11 +120,59 @@ export default function CharacterCreationExtended({
   const wordCount = charTraits.trim() ? charTraits.trim().split(/\s+/).length : 0
   const canGenerateProfileImage = (traitCount >= 5 || wordCount >= 50) && traitCount <= 5 && !profileImageUrl
 
-  const generatePlaceholderProfileImage = () => {
-    const label = encodeURIComponent(characterName ? `${characterName} – Profilbild` : 'Profilbild')
-    const placeholderUrl = `https://placehold.co/512x512/png?text=${label}`
-    setProfileImageUrl(placeholderUrl)
-    setProfileImageSaved(false)
+  const getAttributeScore = (value: string): number => {
+    const { diceCount, modifier } = parseD6Value(value)
+    return diceCount * 10 + modifier
+  }
+
+  const getTopAttributes = () => {
+    return STANDARD_ATTRIBUTES
+      .map((attr) => {
+        const value = getAttributeValue(attr)
+        return { name: attr, value, score: getAttributeScore(value) }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2)
+  }
+
+  const generatePlaceholderProfileImage = async () => {
+    const topAttributes = getTopAttributes()
+      .map((attr) => `${attr.name} ${attr.value}`)
+      .join(', ')
+    const equipmentText = visibleEquipment.trim()
+    const resolvedRace = race === 'Andere' ? otherRace.trim() : race
+    const resolvedClass = className === 'Andere' ? otherClass.trim() : className
+
+    setProfileImageLoading(true)
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'portrait',
+          data: {
+            race: resolvedRace,
+            className: resolvedClass,
+            age,
+            traits: traitList,
+            equipment: equipmentText,
+            topAttributes,
+          },
+          fallcrestFilter: portraitFallcrestFilter,
+        }),
+      })
+      const json = await response.json()
+      if (json?.imageUrl) {
+        setProfileImageUrl(json.imageUrl)
+        setProfileImageSaved(false)
+      } else {
+        alert('Bild konnte nicht generiert werden.')
+      }
+    } catch (error) {
+      alert('Bildgenerierung fehlgeschlagen.')
+    } finally {
+      setProfileImageLoading(false)
+    }
   }
 
   const handleAttributeBonusChange = (attrName: string, delta: number) => {
@@ -303,8 +359,8 @@ export default function CharacterCreationExtended({
       id: Date.now().toString(),
       name: characterName,
       playerName: playerName,
-      className: className || undefined,
-      race: race || undefined,
+      className: (className === 'Andere' ? otherClass.trim() : className) || undefined,
+      race: (race === 'Andere' ? otherRace.trim() : race) || undefined,
       age: age || undefined,
       gender: gender || undefined,
       level: 1, // Startet auf Stufe 1
@@ -321,6 +377,7 @@ export default function CharacterCreationExtended({
       skillPointsUsed: usedSkillPoints,
       blibsUsed: usedBlibs,
       profileImageUrl: profileImageSaved ? profileImageUrl || undefined : undefined,
+      imageUrl: profileImageSaved ? profileImageUrl || undefined : undefined,
     }
 
     const updated = [...characters, newCharacter]
@@ -367,21 +424,59 @@ export default function CharacterCreationExtended({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-white/90 mb-2 font-medium">Klasse:</label>
-                  <input
-                    type="text"
+                  <select
                     value={className}
-                    onChange={(e) => setClassName(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  />
+                    onChange={(e) => {
+                      setClassName(e.target.value)
+                      if (e.target.value !== 'Andere') {
+                        setOtherClass('')
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  >
+                    {CLASSES.map((c) => (
+                      <option key={c} value={c} className="bg-slate-800">
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  {className === 'Andere' && (
+                    <input
+                      type="text"
+                      value={otherClass}
+                      onChange={(e) => setOtherClass(e.target.value)}
+                      placeholder="Eigene Klasse eingeben..."
+                      className="mt-2 w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="block text-white/90 mb-2 font-medium">Rasse:</label>
-                  <input
-                    type="text"
+                  <select
                     value={race}
-                    onChange={(e) => setRace(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  />
+                    onChange={(e) => {
+                      setRace(e.target.value)
+                      if (e.target.value !== 'Andere') {
+                        setOtherRace('')
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  >
+                    {RACES.map((r) => (
+                      <option key={r} value={r} className="bg-slate-800">
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  {race === 'Andere' && (
+                    <input
+                      type="text"
+                      value={otherRace}
+                      onChange={(e) => setOtherRace(e.target.value)}
+                      placeholder="Eigene Rasse eingeben..."
+                      className="mt-2 w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -437,51 +532,6 @@ export default function CharacterCreationExtended({
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                <div className="flex flex-col gap-4">
-                  <button
-                    onClick={generatePlaceholderProfileImage}
-                    disabled={!canGenerateProfileImage}
-                    className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
-                  >
-                    Profilbild generieren
-                  </button>
-
-                  {profileImageUrl && (
-                    <div className="space-y-3">
-                      <div className="bg-white/5 p-3 rounded-lg border border-white/10">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={profileImageUrl}
-                          alt="Generiertes Profilbild"
-                          className="w-full max-w-sm rounded-lg border border-white/10"
-                        />
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <button
-                          onClick={() => {
-                            setProfileImageUrl(null)
-                            setProfileImageSaved(false)
-                          }}
-                          className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
-                        >
-                          Verwerfen / Neuer Versuch
-                        </button>
-                        <button
-                          onClick={() => setProfileImageSaved(true)}
-                          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
-                        >
-                          Speichern
-                        </button>
-                      </div>
-                      {profileImageSaved && (
-                        <div className="text-green-400 text-sm">Profilbild wird beim Speichern des Charakters übernommen.</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <div>
                 <label className="block text-white/90 mb-2 font-medium">Gesinnung: *</label>
                 <AlignmentSelector
@@ -500,7 +550,7 @@ export default function CharacterCreationExtended({
                   onClick={onCancel}
                   className="px-6 bg-white/10 hover:bg-white/20 text-white font-semibold py-3 rounded-lg transition-colors"
                 >
-                  Abbrechen
+                  Zurück
                 </button>
                 <button
                   onClick={() => setStep('attributes')}
@@ -732,25 +782,33 @@ export default function CharacterCreationExtended({
                       <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
                         <div className="text-white/90 text-sm font-medium mb-2">Eine Spezialisierung hinzufügen:</div>
                         <div className="flex gap-2">
+                          {(() => {
+                            const isSelectedAttr = attrSkills.some(s => s.id === newSpecialization.skillId)
+                            return (
+                              <>
                           <input
                             type="text"
                             placeholder="Name der Spezialisierung..."
-                            value={newSpecialization.skillId === attr ? newSpecialization.name : ''}
+                            value={isSelectedAttr ? newSpecialization.name : ''}
                             onChange={(e) => {
-                              if (newSpecialization.skillId === attr) {
+                              if (isSelectedAttr) {
                                 setNewSpecialization(prev => ({ ...prev, name: e.target.value }))
                               }
                             }}
                             className="flex-1 px-3 py-2 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 text-sm"
                           />
                           <select
-                            value={newSpecialization.skillId === attr ? newSpecialization.skillId : ''}
+                            value={isSelectedAttr ? newSpecialization.skillId : ''}
                             onChange={(e) => {
-                              if (e.target.value) {
-                                setNewSpecialization({ name: newSpecialization.name, skillId: e.target.value })
-                              } else {
+                              const nextSkillId = e.target.value
+                              if (!nextSkillId) {
                                 setNewSpecialization({ name: '', skillId: '' })
+                                return
                               }
+                              setNewSpecialization(prev => ({
+                                ...prev,
+                                skillId: nextSkillId,
+                              }))
                             }}
                             className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
                           >
@@ -763,15 +821,18 @@ export default function CharacterCreationExtended({
                           </select>
                           <button
                             onClick={() => {
-                              if (newSpecialization.skillId === attr && newSpecialization.name.trim()) {
+                              if (isSelectedAttr && newSpecialization.name.trim()) {
                                 handleAddSpecializationGlobal()
                               }
                             }}
-                            disabled={!newSpecialization.name.trim() || newSpecialization.skillId !== attr}
+                            disabled={!newSpecialization.name.trim() || !isSelectedAttr}
                             className="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
                           >
                             Hinzufügen
                           </button>
+                              </>
+                            )
+                          })()}
                         </div>
                       </div>
                       
@@ -805,7 +866,77 @@ export default function CharacterCreationExtended({
                 })}
               </div>
 
+              <div className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-4">
+                <div>
+                  <label className="block text-white/90 mb-2 font-medium">Sichtbare Ausrüstung (für das Profilbild):</label>
+                  <textarea
+                    value={visibleEquipment}
+                    onChange={(e) => setVisibleEquipment(e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    placeholder="z.B. Lederweste, Dolch, Kartenrolle"
+                  />
+                </div>
+                <div className="flex flex-col gap-4">
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={portraitFallcrestFilter}
+                      onChange={(e) => setPortraitFallcrestFilter(e.target.checked)}
+                      className="rounded"
+                    />
+                    Fallcrest-Artefakt-Nässe aktivieren
+                  </label>
+                  <button
+                    onClick={generatePlaceholderProfileImage}
+                    disabled={!canGenerateProfileImage || profileImageLoading}
+                    className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                  >
+                    {profileImageLoading ? 'Generiere...' : 'Profilbild generieren'}
+                  </button>
+
+                  {profileImageUrl && (
+                    <div className="space-y-3">
+                      <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={profileImageUrl}
+                          alt="Generiertes Profilbild"
+                          className="w-full max-w-sm rounded-lg border border-white/10"
+                        />
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={() => {
+                            setProfileImageUrl(null)
+                            setProfileImageSaved(false)
+                          }}
+                          className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                        >
+                          Verwerfen / Neuer Versuch
+                        </button>
+                        <button
+                          onClick={() => setProfileImageSaved(true)}
+                          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                        >
+                          Speichern
+                        </button>
+                      </div>
+                      {profileImageSaved && (
+                        <div className="text-green-400 text-sm">Profilbild wird beim Speichern des Charakters übernommen.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex gap-4">
+                <button
+                  onClick={() => setStep('attributes')}
+                  className="px-6 bg-white/10 hover:bg-white/20 text-white font-semibold py-3 rounded-lg transition-colors"
+                >
+                  Zurück
+                </button>
                 <button
                   onClick={handleCreate}
                   disabled={!characterName.trim() || !selectedAlignment || !canFinish}

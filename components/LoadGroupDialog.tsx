@@ -13,7 +13,7 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
   const [loading, setLoading] = useState(true)
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
   const [groupCode, setGroupCode] = useState('')
-  const [playerName, setPlayerName] = useState('')
+  const gmName = 'Spielleiter'
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -28,8 +28,8 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
   }
 
   const handleLoadByCode = async () => {
-    if (!groupCode.trim() || !playerName.trim()) {
-      setError('Bitte fülle alle Felder aus')
+    if (!groupCode.trim()) {
+      setError('Bitte gib einen Code ein')
       return
     }
 
@@ -55,10 +55,10 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
     }
 
     // Prüfe ob bereits Mitglied
-    const success = await joinGroup(group.id, playerName, role)
+    const success = await joinGroup(group.id, gmName, role)
 
     if (success) {
-      onGroupSelected(group.id, group.code, playerName, role)
+      onGroupSelected(group.id, group.code, gmName, role)
     } else {
       setError('Fehler beim Laden der Gruppe.')
     }
@@ -67,8 +67,8 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
   }
 
   const handleSelectGroup = async () => {
-    if (!selectedGroupId || !playerName.trim()) {
-      setError('Bitte wähle eine Gruppe und gib deinen Namen ein')
+    if (!selectedGroupId) {
+      setError('Bitte wähle eine Gruppe')
       return
     }
 
@@ -82,10 +82,10 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
       return
     }
 
-    const success = await joinGroup(group.id, playerName, 'spielleiter')
+    const success = await joinGroup(group.id, gmName, 'spielleiter')
 
     if (success) {
-      onGroupSelected(group.id, group.code, playerName, 'spielleiter')
+      onGroupSelected(group.id, group.code, gmName, 'spielleiter')
     } else {
       setError('Fehler beim Laden der Gruppe.')
     }
@@ -146,20 +146,6 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
             </div>
           </div>
 
-          {/* Spielername */}
-          <div>
-            <label className="block text-white/90 mb-2 font-medium">
-              Dein Name: *
-            </label>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Spielleiter-Name"
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-            />
-          </div>
-
           <div className="flex gap-3 pt-4">
             <button
               onClick={onCancel}
@@ -170,7 +156,7 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
             {selectedGroupId ? (
               <button
                 onClick={handleSelectGroup}
-                disabled={loading || !playerName.trim()}
+                disabled={loading}
                 className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors"
               >
                 {loading ? '...' : 'Laden'}
@@ -178,7 +164,7 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
             ) : (
               <button
                 onClick={handleLoadByCode}
-                disabled={loading || !groupCode.trim() || !playerName.trim()}
+                disabled={loading || !groupCode.trim()}
                 className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors"
               >
                 {loading ? '...' : 'Laden'}

@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getGroupByCode, joinGroup, getGroupsByPlayer } from '@/lib/supabase-data'
+import { getAllGroups, joinGroup, getGroupMembers } from '@/lib/supabase-data'
 import { testSupabaseConnection, checkTables } from '@/lib/supabase-debug'
-import GroupManager from './GroupManager'
 
 interface GroupSelectorProps {
   onGroupSelected: (groupId: string, groupCode: string, playerName: string, role: 'spielleiter' | 'spieler') => void
@@ -11,12 +10,18 @@ interface GroupSelectorProps {
 }
 
 export default function GroupSelector({ onGroupSelected, onCancel }: GroupSelectorProps) {
-  const [groupCode, setGroupCode] = useState('')
-  const [playerName, setPlayerName] = useState('')
+  const [groups, setGroups] = useState<any[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [groupPassword, setGroupPassword] = useState('')
+  const [passwordVerified, setPasswordVerified] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [groupPlayers, setGroupPlayers] = useState<any[]>([])
+  const [selectedPlayerName, setSelectedPlayerName] = useState('')
+  const [newPlayerName, setNewPlayerName] = useState('')
+  const [showNewPlayer, setShowNewPlayer] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [debugInfo, setDebugInfo] = useState<string>('')
-  const [showExistingGroups, setShowExistingGroups] = useState(false)
 
   useEffect(() => {
     // Teste Supabase-Verbindung beim Laden
@@ -34,45 +39,55 @@ export default function GroupSelector({ onGroupSelected, onCancel }: GroupSelect
     testConnection()
   }, [])
 
-  const handleJoinGroup = async () => {
-    if (!groupCode.trim() || !playerName.trim()) {
-      setError('Bitte fülle alle Felder aus')
+  useEffect(() => {
+    const loadGroups = async () => {
+      const allGroups = await getAllGroups()
+      setGroups(allGroups)
+    }
+    loadGroups()
+  }, [])
+
+  const handleVerifyPassword = async () => {
+    setPasswordError('')
+    const selectedGroup = groups.find(g => g.id === selectedGroupId)
+    if (!selectedGroup) {
+      setPasswordError('Bitte wähle eine Gruppe')
       return
     }
+    if (!groupPassword.trim()) {
+      setPasswordError('Bitte gib das Gruppen-Passwort ein')
+      return
+    }
+    if (groupPassword.trim().toUpperCase() !== String(selectedGroup.code || '').toUpperCase()) {
+      setPasswordError('Falsches Passwort')
+      return
+    }
+    setPasswordVerified(true)
+    const members = await getGroupMembers(selectedGroupId)
+    setGroupPlayers(members.filter((m: any) => m.role === 'spieler'))
+  }
 
+  const handleJoinAsExistingPlayer = () => {
+    const selectedGroup = groups.find(g => g.id === selectedGroupId)
+    if (!selectedGroup || !selectedPlayerName) return
+    onGroupSelected(selectedGroup.id, selectedGroup.code, selectedPlayerName, 'spieler')
+  }
+
+  const handleJoinAsNewPlayer = async () => {
+    const selectedGroup = groups.find(g => g.id === selectedGroupId)
+    if (!selectedGroup) return
+    if (!newPlayerName.trim()) {
+      setError('Bitte gib einen Spielernamen ein')
+      return
+    }
     setLoading(true)
     setError('')
-
-    // Prüfe ob es ein Spielleiter-Code ist (beginnt und endet mit 'x')
-    // Entschärft für Entwicklung: Akzeptiert auch andere Längen
-    const trimmedCode = groupCode.trim().toUpperCase()
-    const isGmCode = trimmedCode.startsWith('X') && trimmedCode.endsWith('X') && trimmedCode.length >= 3
-    
-    let actualCode = trimmedCode
-    let role: 'spielleiter' | 'spieler' = 'spieler'
-    
-    if (isGmCode) {
-      // Entferne x am Anfang und Ende für die Datenbank-Suche
-      actualCode = trimmedCode.slice(1, -1)
-      role = 'spielleiter'
-    }
-
-    const group = await getGroupByCode(actualCode)
-
-    if (!group) {
-      setError('Gruppe nicht gefunden. Prüfe den Code.')
-      setLoading(false)
-      return
-    }
-
-    const success = await joinGroup(group.id, playerName, role)
-
+    const success = await joinGroup(selectedGroup.id, newPlayerName.trim(), 'spieler')
     if (success) {
-      onGroupSelected(group.id, group.code, playerName, role)
+      onGroupSelected(selectedGroup.id, selectedGroup.code, newPlayerName.trim(), 'spieler')
     } else {
       setError('Fehler beim Beitreten. Vielleicht ist der Name bereits vergeben?')
     }
-
     setLoading(false)
   }
 
@@ -86,30 +101,9 @@ export default function GroupSelector({ onGroupSelected, onCancel }: GroupSelect
           Gruppe erstellen oder beitreten
         </p>
 
-        {/* Spieler: Nur beitreten */}
         <p className="text-white/80 text-center mb-6">
           Gruppe beitreten
         </p>
-
-        {/* Bestehende Gruppen anzeigen */}
-        {playerName.trim() && (
-          <div className="mb-6">
-            <button
-              onClick={() => setShowExistingGroups(!showExistingGroups)}
-              className="w-full py-2 rounded-lg font-semibold transition-colors bg-white/5 text-white/70 hover:bg-white/10"
-            >
-              {showExistingGroups ? '▼' : '▶'} Meine Gruppen anzeigen
-            </button>
-            {showExistingGroups && (
-              <div className="mt-4">
-                <GroupManager
-                  playerName={playerName}
-                  onGroupSelected={onGroupSelected}
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         {debugInfo && (
           <div className="mb-4 p-3 bg-yellow-600/20 border border-yellow-600 rounded-lg">
@@ -125,60 +119,142 @@ export default function GroupSelector({ onGroupSelected, onCancel }: GroupSelect
         )}
 
         <div className="space-y-4">
-          {/* Spielername (immer) */}
+          {/* Gruppen-Auswahl */}
           <div>
             <label className="block text-white/90 mb-2 font-medium">
-              Dein Name: *
+              Gruppe auswählen:
             </label>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Spielername"
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-            />
-          </div>
-
-          {/* Gruppe beitreten (Spieler) */}
-          <div>
-            <label className="block text-white/90 mb-2 font-medium">
-              Gruppen-Code: *
-            </label>
-            <input
-              type="text"
-              value={groupCode}
-              onChange={(e) => setGroupCode(e.target.value.toUpperCase())}
-              placeholder="4-stelliger Code"
-              maxLength={20}
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400 uppercase"
-            />
-            <p className="text-white/60 text-xs mt-1">
-              Frage den Spielleiter nach dem Gruppen-Code
-            </p>
-          </div>
-
-
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+            <select
+              value={selectedGroupId}
+              onChange={(e) => {
+                setSelectedGroupId(e.target.value)
+                setPasswordVerified(false)
+                setGroupPassword('')
+                setPasswordError('')
+                setGroupPlayers([])
+                setSelectedPlayerName('')
+                setNewPlayerName('')
+                setShowNewPlayer(false)
+              }}
+              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
             >
-              Abbrechen
-            </button>
-            <button
-              onClick={handleJoinGroup}
-              disabled={loading || !playerName.trim() || !groupCode.trim()}
-              className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors"
-            >
-              {loading ? '...' : 'Beitreten'}
-            </button>
+              <option value="" className="bg-slate-800">-- Gruppe auswählen --</option>
+              {groups.map(group => (
+                <option key={group.id} value={group.id} className="bg-slate-800">
+                  {group.name}
+                </option>
+              ))}
+            </select>
           </div>
+
+          {/* Passwort */}
+          {selectedGroupId && !passwordVerified && (
+            <div>
+              <label className="block text-white/90 mb-2 font-medium">
+                Gruppen-Passwort:
+              </label>
+              <input
+                type="text"
+                value={groupPassword}
+                onChange={(e) => setGroupPassword(e.target.value)}
+                placeholder="Passwort (sichtbar)"
+                className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+              />
+              {passwordError && (
+                <p className="text-red-400 text-sm mt-2">{passwordError}</p>
+              )}
+              <button
+                onClick={handleVerifyPassword}
+                className="mt-3 w-full px-4 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                Weiter
+              </button>
+            </div>
+          )}
+
+          {/* Spieler-Auswahl */}
+          {passwordVerified && (
+            <div className="space-y-3">
+              <div className="text-white/80 text-sm">Bestehende Spieler:</div>
+              {groupPlayers.length === 0 ? (
+                <div className="text-white/60 text-sm">Noch keine Spieler angelegt.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {groupPlayers.map((player: any) => (
+                    <button
+                      key={player.id}
+                      onClick={() => {
+                        setSelectedPlayerName(player.player_name)
+                        setShowNewPlayer(false)
+                      }}
+                      className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
+                        selectedPlayerName === player.player_name
+                          ? 'bg-primary-600 text-white border-primary-400'
+                          : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+                      }`}
+                    >
+                      {player.player_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    setShowNewPlayer(true)
+                    setSelectedPlayerName('')
+                  }}
+                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm"
+                >
+                  + Neuen Spieler anlegen
+                </button>
+              </div>
+
+              {showNewPlayer && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    placeholder="Neuer Spielername"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={onCancel}
+                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+                >
+                  Abbrechen
+                </button>
+                {showNewPlayer ? (
+                  <button
+                    onClick={handleJoinAsNewPlayer}
+                    disabled={loading || !newPlayerName.trim()}
+                    className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors"
+                  >
+                    {loading ? '...' : 'Beitreten'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleJoinAsExistingPlayer}
+                    disabled={!selectedPlayerName}
+                    className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors"
+                  >
+                    Weiter
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 pt-6 border-t border-white/10">
           <p className="text-white/60 text-xs text-center">
-            💡 Tipp: Der Spielleiter erstellt eine Gruppe und teilt den Code mit den Spielern
+            💡 Gruppe auswählen → Passwort eingeben → Spieler auswählen
           </p>
         </div>
       </div>

@@ -128,7 +128,7 @@ export default function CreateGroupDialog({ onGroupCreated, onCancel }: CreateGr
           </div>
 
           <p className="text-white/70 text-sm">
-            💡 Deinen Spielleiter-Namen kannst du später in der Gruppen-Übersicht eingeben.
+            💡 Ein Spielleiter-Name ist nicht erforderlich.
           </p>
 
           <div className="flex gap-3 pt-4">

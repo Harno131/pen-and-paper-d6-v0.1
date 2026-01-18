@@ -1,4 +1,4 @@
-import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings } from '@/types'
+import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary } from '@/types'
 import { extractTagsFromText } from '@/lib/tags'
 import { createSupabaseClient } from './supabase'
 
@@ -132,8 +132,80 @@ export const getGroupMembers = async (groupId: string) => {
   return data || []
 }
 
+// Bestiary
+export const getBestiary = async (): Promise<Bestiary[]> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('bestiary')
+    .select('*')
+    .order('name', { ascending: true })
+
+  if (error || !data) return []
+
+  return data.map((row: any) => {
+    const skills = Array.isArray(row.skills) ? row.skills : []
+    const abilities = skills.map((s: any) => (typeof s === 'string' ? s : s?.name)).filter(Boolean)
+    return {
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      level: row.level,
+      race: row.race || undefined,
+      description: row.description || undefined,
+      abilities,
+      tags: Array.isArray(row.tags) ? row.tags : undefined,
+      attributes: row.attributes || {},
+      maxHp: row.max_hp || 1,
+      fallcrestTwist: row.fallcrest_twist || '',
+      imageUrl: row.image_url || undefined,
+      createdAt: row.created_at ? new Date(row.created_at) : undefined,
+      updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+    }
+  })
+}
+
+export const upsertBestiary = async (monster: Bestiary): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+
+  const { error } = await supabase
+    .from('bestiary')
+    .upsert({
+      id: monster.id,
+      name: monster.name,
+      type: monster.type,
+      level: monster.level || 1,
+      race: monster.race || null,
+      description: monster.description || null,
+      attributes: monster.attributes,
+      skills: monster.abilities || [],
+      inventory: [],
+      max_hp: monster.maxHp || 1,
+      fallcrest_twist: monster.fallcrestTwist || '',
+      image_url: monster.imageUrl || null,
+      tags: monster.tags || [],
+      updated_at: new Date().toISOString(),
+    })
+
+  return !error
+}
+
+export const removeBestiary = async (id: string): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+
+  const { error } = await supabase
+    .from('bestiary')
+    .delete()
+    .eq('id', id)
+
+  return !error
+}
+
 // Entferne einen Spieler aus der Gruppe
-export const removePlayerFromGroup = async (groupId: string, playerName: string): Promise<boolean> => {
+export const removePlayerFromGroup = async (groupId: string, memberId: string, playerName: string): Promise<boolean> => {
   const supabase = createSupabaseClient()
   if (!supabase) return false
 
@@ -142,7 +214,7 @@ export const removePlayerFromGroup = async (groupId: string, playerName: string)
     .from('group_members')
     .delete()
     .eq('group_id', groupId)
-    .eq('player_name', playerName)
+    .eq('id', memberId)
 
   if (memberError) {
     console.error('Error removing player from group:', memberError)
@@ -291,7 +363,8 @@ export const getCharactersFromSupabase = async (groupId: string): Promise<Charac
     inventory: char.inventory || [],
     alignment: char.alignment,
     notes: char.notes,
-    profileImageUrl: char.profile_image_url || undefined,
+    imageUrl: char.image_url || undefined,
+    profileImageUrl: char.profile_image_url || char.image_url || undefined,
     tags: Array.isArray(char.tags) ? char.tags : undefined,
     createdDate: char.created_date ? new Date(char.created_date) : undefined,
     lastPlayedDate: char.last_played_date ? new Date(char.last_played_date) : undefined,
@@ -328,7 +401,8 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
       inventory: character.inventory || [],
       alignment: character.alignment,
       notes: character.notes,
-      profile_image_url: character.profileImageUrl || null,
+      image_url: character.imageUrl || character.profileImageUrl || null,
+      profile_image_url: character.profileImageUrl || character.imageUrl || null,
       tags: tags.length > 0 ? tags : null,
       created_date: character.createdDate?.toISOString(),
       last_played_date: character.lastPlayedDate?.toISOString(),
@@ -467,7 +541,8 @@ export const getJournalEntriesFromSupabase = async (groupId: string): Promise<Jo
     title: entry.title,
     content: entry.content,
     tags: Array.isArray(entry.tags) ? entry.tags : undefined,
-    illustrationUrl: entry.illustration_url || undefined,
+    imageUrl: entry.image_url || undefined,
+    illustrationUrl: entry.illustration_url || entry.image_url || undefined,
     timestamp: new Date(entry.timestamp),
     fantasyDate: entry.fantasy_date ? {
       year: entry.fantasy_date.year,
@@ -496,7 +571,8 @@ export const saveJournalEntryToSupabase = async (groupId: string, entry: Journal
       title: entry.title,
       content: entry.content,
       tags,
-      illustration_url: entry.illustrationUrl || null,
+      image_url: entry.imageUrl || entry.illustrationUrl || null,
+      illustration_url: entry.illustrationUrl || entry.imageUrl || null,
       timestamp: entry.timestamp.toISOString(),
       fantasy_date: entry.fantasyDate || null,
       time_of_day: entry.timeOfDay || null,

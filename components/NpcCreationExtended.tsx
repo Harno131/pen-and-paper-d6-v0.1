@@ -16,7 +16,7 @@ interface NpcCreationExtendedProps {
 // Optionen für Dropdowns
 const RACES = ['Mensch', 'Elf', 'Zwerg', 'Halbling', 'Ork', 'Gnom', 'Drache', 'Andere']
 const CLASSES = ['Krieger', 'Magier', 'Dieb', 'Kleriker', 'Barde', 'Jäger', 'Händler', 'Handwerker', 'Gelehrter', 'Adliger', 'Bauer', 'Soldat', 'Andere']
-const GENDERS = ['Männlich', 'Weiblich', 'Divers']
+const GENDERS = ['Männlich', 'Weiblich']
 const PROFESSIONS = [
   'Händler', 'Schmied', 'Bäcker', 'Barkeeper', 'Wirt', 'Heiler', 'Magier', 'Priester',
   'Stadtwache', 'Soldat', 'Dieb', 'Assassine', 'Barde', 'Gelehrter', 'Adliger', 'Bauer',
@@ -79,6 +79,10 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
   const [location, setLocation] = useState(editingNpc?.npcLocation || '')
   const [address, setAddress] = useState(editingNpc?.npcAddress || '')
   const [bestSkills, setBestSkills] = useState<string[]>(editingNpc?.npcBestSkills || [])
+  const [portraitUrl, setPortraitUrl] = useState<string | null>(editingNpc?.profileImageUrl || null)
+  const [portraitSaved, setPortraitSaved] = useState(!!editingNpc?.profileImageUrl)
+  const [portraitLoading, setPortraitLoading] = useState(false)
+  const [portraitFallcrestFilter, setPortraitFallcrestFilter] = useState(true)
   const [tagInput, setTagInput] = useState(
     editingNpc?.tags && editingNpc.tags.length > 0 ? editingNpc.tags.map(tag => `#${tag}`).join(' ') : ''
   )
@@ -141,6 +145,42 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
     }
   }
 
+  const handleGeneratePortrait = async () => {
+    const traits = [
+      profession,
+      ...bestSkills,
+    ].filter(Boolean)
+
+    setPortraitLoading(true)
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'portrait',
+          data: {
+            race,
+            className,
+            age: undefined,
+            traits,
+          },
+          fallcrestFilter: portraitFallcrestFilter,
+        }),
+      })
+      const json = await response.json()
+      if (json?.imageUrl) {
+        setPortraitUrl(json.imageUrl)
+        setPortraitSaved(false)
+      } else {
+        alert('Bild konnte nicht generiert werden.')
+      }
+    } catch (error) {
+      alert('Bildgenerierung fehlgeschlagen.')
+    } finally {
+      setPortraitLoading(false)
+    }
+  }
+
   const handleSave = () => {
     if (!name.trim()) {
       alert('Bitte gib einen Namen ein')
@@ -188,6 +228,8 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       npcSecretNemesis: secretNemesis || undefined,
       npcSecretPerpetrator: secretPerpetrator || undefined,
       npcSecretVictim: secretVictim || undefined,
+      profileImageUrl: portraitSaved ? portraitUrl || undefined : undefined,
+      imageUrl: portraitSaved ? portraitUrl || undefined : undefined,
       tags: tags.length > 0 ? tags : undefined,
       createdDate: editingNpc?.createdDate || new Date(),
       lastPlayedDate: new Date(),
@@ -420,6 +462,63 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
               placeholder="z.B. 'Nebeltorstraße 12'"
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
+          </div>
+
+          {/* Portrait */}
+          <div className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-4">
+            <div className="flex flex-col gap-3">
+              <label className="flex items-center gap-2 text-white/80 text-sm">
+                <input
+                  type="checkbox"
+                  checked={portraitFallcrestFilter}
+                  onChange={(e) => setPortraitFallcrestFilter(e.target.checked)}
+                  className="rounded"
+                />
+                Fallcrest-Artefakt-Nässe aktivieren
+              </label>
+              <button
+                onClick={handleGeneratePortrait}
+                disabled={portraitLoading}
+                className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+              >
+                {portraitLoading ? 'Generiere...' : 'Porträt generieren'}
+              </button>
+
+              {portraitUrl && (
+                <div className="space-y-3">
+                  <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={portraitUrl}
+                      alt="Generiertes Porträt"
+                      className="w-full max-w-sm rounded-lg border border-white/10"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={() => {
+                        setPortraitUrl(null)
+                        setPortraitSaved(false)
+                      }}
+                      className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                    >
+                      Verwerfen / Neuer Versuch
+                    </button>
+                    <button
+                      onClick={() => setPortraitSaved(true)}
+                      className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                    >
+                      Speichern
+                    </button>
+                  </div>
+                  {portraitSaved && (
+                    <div className="text-green-400 text-sm">
+                      Porträt wird beim Speichern des NPC übernommen.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Geheim-Attribute */}

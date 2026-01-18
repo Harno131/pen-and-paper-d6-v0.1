@@ -41,8 +41,14 @@ export default function SpielerPage() {
   const [journalTagFilter, setJournalTagFilter] = useState('')
   const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
+  const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
+  const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [fantasyCalendarStart, setFantasyCalendarStart] = useState<{
+    startDate?: { year: number; month: number; day: number }
+    realStartDate?: string
+  } | null>(null)
   const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
@@ -96,7 +102,19 @@ export default function SpielerPage() {
     const entries = await getJournalEntries()
     setJournalEntries(entries)
     setSharedImages(getSharedImages())
-  }, [selectedCharacter])
+
+    if (groupId) {
+      const groupSettings = await getGroupSettings(groupId)
+      if (groupSettings?.fantasyCalendar) {
+        setFantasyCalendarStart({
+          startDate: groupSettings.fantasyCalendar.startDate,
+          realStartDate: groupSettings.fantasyCalendar.realStartDate,
+        })
+      } else {
+        setFantasyCalendarStart(null)
+      }
+    }
+  }, [selectedCharacter, groupId])
 
   useEffect(() => {
     const role = localStorage.getItem('userRole')
@@ -192,6 +210,7 @@ export default function SpielerPage() {
       content,
       tags,
       illustrationUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
+      imageUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
       timestamp: editingEntry?.timestamp || now,
       fantasyDate,
       timeOfDay: selectedTimeOfDay as any,
@@ -1108,19 +1127,47 @@ export default function SpielerPage() {
 
                 {journalWordCount >= 50 && (
                   <div className="space-y-3">
+                    <label className="flex items-center gap-2 text-white/80 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={journalFallcrestFilter}
+                        onChange={(e) => setJournalFallcrestFilter(e.target.checked)}
+                        className="rounded"
+                      />
+                      Fallcrest-Artefakt-Nässe aktivieren
+                    </label>
                     <button
-                      onClick={() => {
-                        const label = encodeURIComponent(
-                          `Illustration – ${newJournalEntry.content.trim().slice(0, 24)}...`
-                        )
-                        const placeholderUrl = `https://placehold.co/768x432/png?text=${label}`
-                        setJournalIllustrationUrl(placeholderUrl)
-                        setJournalIllustrationSaved(false)
+                      onClick={async () => {
+                        setJournalIllustrationLoading(true)
+                        try {
+                          const response = await fetch('/api/generate-image', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              type: 'event',
+                              data: {
+                                text: newJournalEntry.content,
+                              },
+                              fallcrestFilter: journalFallcrestFilter,
+                            }),
+                          })
+                          const json = await response.json()
+                          if (json?.imageUrl) {
+                            setJournalIllustrationUrl(json.imageUrl)
+                            setJournalIllustrationSaved(false)
+                          } else {
+                            alert('Illustration konnte nicht generiert werden.')
+                          }
+                        } catch (error) {
+                          alert('Illustration konnte nicht generiert werden.')
+                        } finally {
+                          setJournalIllustrationLoading(false)
+                        }
                       }}
-                      disabled={!canGenerateJournalIllustration}
+                      disabled={!canGenerateJournalIllustration || journalIllustrationLoading}
                       className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
                     >
-                      Illustration generieren
+                      {journalIllustrationLoading ? 'Generiere...' : 'Illustration generieren'}
                     </button>
                   </div>
                 )}
@@ -1238,7 +1285,14 @@ export default function SpielerPage() {
                   const fantasyDate = entry.fantasyDate 
                     ? formatFantasyDate(entry.fantasyDate, true)
                     : entry.timestamp 
-                      ? formatFantasyDate(realDateToFantasyDate(entry.timestamp), true)
+                      ? formatFantasyDate(
+                          realDateToFantasyDate(
+                            entry.timestamp,
+                            fantasyCalendarStart?.startDate,
+                            fantasyCalendarStart?.realStartDate ? new Date(fantasyCalendarStart.realStartDate) : undefined
+                          ),
+                          true
+                        )
                       : null
                   const specialEvent = entry.fantasyDate ? getSpecialEvent(entry.fantasyDate) : null
                   const monthInfo = entry.fantasyDate ? getMonthInfo(entry.fantasyDate.month) : null

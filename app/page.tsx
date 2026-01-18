@@ -97,7 +97,7 @@ export default function Home() {
     localStorage.setItem('groupId', groupId)
     localStorage.setItem('groupCode', groupCode)
     localStorage.setItem('userRole', 'spielleiter')
-    // playerName wird später in der Spielleiter-Übersicht eingegeben
+    localStorage.setItem('playerName', 'Spielleiter')
 
     // Weiterleitung zur Spielleiter-Seite
     router.push('/spielleiter')

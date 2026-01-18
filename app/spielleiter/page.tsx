@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings } from '@/types'
+import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary } from '@/types'
 import {
   getCharacters,
   saveCharacters,
@@ -23,7 +23,7 @@ import {
   calculateCharacterPoints,
   calculateHitPoints,
 } from '@/lib/data'
-import { getGroupSettings, getGroupMembers, removePlayerFromGroup } from '@/lib/supabase-data'
+import { getGroupSettings, getGroupMembers, removePlayerFromGroup, getBestiary, upsertBestiary, removeBestiary } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
@@ -35,9 +35,20 @@ import NameGenerator from '@/components/NameGenerator'
 import NpcCreationExtended from '@/components/NpcCreationExtended'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 
+const BESTIARY_ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'] as const
+const DEFAULT_MONSTER_ATTRIBUTES = {
+  Reflexe: '1D',
+  Koordination: '1D',
+  Stärke: '1D',
+  Wissen: '1D',
+  Wahrnehmung: '1D',
+  Ausstrahlung: '1D',
+  Magie: '0D',
+}
+
 export default function SpielleiterPage() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'overview' | 'deleted' | 'journal' | 'images' | 'skills' | 'settings'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'deleted' | 'journal' | 'images' | 'skills' | 'settings' | 'bestiary'>('overview')
   const [characters, setCharacters] = useState<Character[]>([])
   const [deletedCharacters, setDeletedCharacters] = useState<DeletedCharacter[]>([])
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
@@ -50,10 +61,35 @@ export default function SpielleiterPage() {
   const [newImage, setNewImage] = useState({ title: '', description: '', url: '' })
   const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
+  const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
+  const [bestiary, setBestiary] = useState<Bestiary[]>([])
+  const [editingMonster, setEditingMonster] = useState<Bestiary | null>(null)
+  const [monsterForm, setMonsterForm] = useState({
+    name: '',
+    type: 'Bestie',
+    level: 1,
+    race: '',
+    description: '',
+    abilities: '',
+    maxHp: 1,
+    fallcrestTwist: '',
+    tags: '',
+    attributes: { ...DEFAULT_MONSTER_ATTRIBUTES },
+  })
+  const [monsterImageUrl, setMonsterImageUrl] = useState<string | null>(null)
+  const [monsterImageSaved, setMonsterImageSaved] = useState(false)
+  const [monsterImageLoading, setMonsterImageLoading] = useState(false)
+  const [monsterFallcrestFilter, setMonsterFallcrestFilter] = useState(true)
+  const [bestiaryTagFilter, setBestiaryTagFilter] = useState('')
+  const [expandedMonsterId, setExpandedMonsterId] = useState<string | null>(null)
   const [settings, setSettings] = useState<CharacterCreationSettings>(getCharacterCreationSettings())
+  const [fantasyCalendarStart, setFantasyCalendarStart] = useState<{
+    startDate?: { year: number; month: number; day: number }
+    realStartDate?: string
+  } | null>(null)
   const [hiddenCharacters, setHiddenCharacters] = useState<Set<string>>(new Set())
   const [groupMembers, setGroupMembers] = useState<any[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -62,6 +98,7 @@ export default function SpielleiterPage() {
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
   const [npcTagFilter, setNpcTagFilter] = useState('')
   const [journalTagFilter, setJournalTagFilter] = useState('')
+  const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
 
@@ -71,6 +108,8 @@ export default function SpielleiterPage() {
   }
   const normalizedNpcTagFilter = normalizeTag(npcTagFilter)
   const normalizedJournalTagFilter = normalizeTag(journalTagFilter)
+  const normalizedBestiaryTagFilter = normalizeTag(bestiaryTagFilter)
+  const filteredBestiary = bestiary.filter(monster => matchesTag(monster.tags, normalizedBestiaryTagFilter))
   const matchesJournalCategory = (entry: JournalEntry): boolean => {
     if (journalCategory === 'all') return true
     return matchesTag(entry.tags, journalCategory)
@@ -117,12 +156,23 @@ export default function SpielleiterPage() {
     setDiceRolls(getDiceRolls())
     setAvailableSkills(getAvailableSkills())
     setSettings(getCharacterCreationSettings())
+    const bestiaryData = await getBestiary()
+    setBestiary(bestiaryData)
     
-    // Lade Gruppenmitglieder
+    // Lade Gruppenmitglieder und Kalender-Startdaten
     const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
     if (currentGroupId) {
       const members = await getGroupMembers(currentGroupId)
       setGroupMembers(members)
+      const groupSettings = await getGroupSettings(currentGroupId)
+      if (groupSettings?.fantasyCalendar) {
+        setFantasyCalendarStart({
+          startDate: groupSettings.fantasyCalendar.startDate,
+          realStartDate: groupSettings.fantasyCalendar.realStartDate,
+        })
+      } else {
+        setFantasyCalendarStart(null)
+      }
     }
   }, [groupId])
 
@@ -159,6 +209,93 @@ export default function SpielleiterPage() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [activeTab])
+
+  const resetMonsterForm = () => {
+    setEditingMonster(null)
+    setMonsterForm({
+      name: '',
+      type: 'Bestie',
+      level: 1,
+      race: '',
+      description: '',
+      abilities: '',
+      maxHp: 1,
+      fallcrestTwist: '',
+      tags: '',
+      attributes: { ...DEFAULT_MONSTER_ATTRIBUTES },
+    })
+    setMonsterImageUrl(null)
+    setMonsterImageSaved(false)
+    setMonsterFallcrestFilter(true)
+  }
+
+  const handleGenerateMonsterImage = async () => {
+    setMonsterImageLoading(true)
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'monster',
+          data: {
+            name: monsterForm.name,
+            monsterType: monsterForm.type,
+            abilities: monsterForm.abilities.split(/[,\n;]/).map(a => a.trim()).filter(Boolean),
+          },
+          fallcrestFilter: monsterFallcrestFilter,
+        }),
+      })
+      const json = await response.json()
+      if (json?.imageUrl) {
+        setMonsterImageUrl(json.imageUrl)
+        setMonsterImageSaved(false)
+      } else {
+        alert('Bild konnte nicht generiert werden.')
+      }
+    } catch (error) {
+      alert('Bildgenerierung fehlgeschlagen.')
+    } finally {
+      setMonsterImageLoading(false)
+    }
+  }
+
+  const handleSaveMonster = async () => {
+    if (!monsterForm.name.trim()) {
+      alert('Bitte gib einen Namen an.')
+      return
+    }
+    if (!monsterForm.fallcrestTwist.trim()) {
+      alert('Bitte trage einen Fallcrest-Twist ein.')
+      return
+    }
+    const abilities = monsterForm.abilities.split(/[,\n;]/).map(a => a.trim()).filter(Boolean)
+    const tags = extractTagsFromText(monsterForm.tags)
+    const attributes = BESTIARY_ATTRIBUTES.reduce((acc, attr) => {
+      const value = monsterForm.attributes[attr] || '0D'
+      return { ...acc, [attr]: value }
+    }, {} as Record<string, string>)
+    const monster: Bestiary = {
+      id: editingMonster?.id || `monster-${Date.now()}`,
+      name: monsterForm.name.trim(),
+      type: monsterForm.type,
+      level: Number(monsterForm.level) || 1,
+      race: monsterForm.race.trim() || undefined,
+      description: monsterForm.description.trim() || undefined,
+      abilities,
+      tags,
+      attributes,
+      maxHp: Number(monsterForm.maxHp) || 1,
+      fallcrestTwist: monsterForm.fallcrestTwist.trim(),
+      imageUrl: monsterImageSaved ? monsterImageUrl || undefined : undefined,
+    }
+    const success = await upsertBestiary(monster)
+    if (success) {
+      await loadData()
+      resetMonsterForm()
+    } else {
+      alert('Fehler beim Speichern des Monsters.')
+    }
+  }
 
   const handleRestoreCharacter = (characterId: string) => {
     if (restoreCharacter(characterId)) {
@@ -226,8 +363,7 @@ export default function SpielleiterPage() {
     
     if (selectedAuthor) {
       if (selectedAuthor === 'spielleiter') {
-        const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
-        author = playerName || 'Spielleiter'
+        author = 'Spielleiter'
       } else {
         // Prüfe ob es ein Charakter ist
         const character = characters.find(c => c.id === selectedAuthor)
@@ -240,8 +376,7 @@ export default function SpielleiterPage() {
       }
     } else {
       // Fallback: Spielleiter-Name aus localStorage
-      const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
-      author = playerName || 'Spielleiter'
+      author = 'Spielleiter'
     }
 
     // Extrahiere Titel aus Content (alles vor dem ersten Doppelpunkt)
@@ -258,6 +393,7 @@ export default function SpielleiterPage() {
       content,
       tags,
       illustrationUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
+      imageUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
       timestamp: editingEntry?.timestamp || now,
       fantasyDate,
       timeOfDay: selectedTimeOfDay as any,
@@ -400,6 +536,16 @@ export default function SpielleiterPage() {
             }`}
           >
             ⚔️ Fertigkeiten verwalten
+          </button>
+          <button
+            onClick={() => setActiveTab('bestiary')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              activeTab === 'bestiary'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            🐲 Bestiarium
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -1095,8 +1241,7 @@ export default function SpielleiterPage() {
                                             fantasyDate = realDateToFantasyDate(now)
                                           }
 
-                                          const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
-                                          const author = playerName || 'Spielleiter'
+                                          const author = 'Spielleiter'
                                           
                                           const publicInfo = [
                                             `Name: ${npc.name}`,
@@ -1511,19 +1656,47 @@ export default function SpielleiterPage() {
 
                 {journalWordCount >= 50 && (
                   <div className="space-y-3">
+                    <label className="flex items-center gap-2 text-white/80 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={journalFallcrestFilter}
+                        onChange={(e) => setJournalFallcrestFilter(e.target.checked)}
+                        className="rounded"
+                      />
+                      Fallcrest-Artefakt-Nässe aktivieren
+                    </label>
                     <button
-                      onClick={() => {
-                        const label = encodeURIComponent(
-                          `Illustration – ${newJournalEntry.content.trim().slice(0, 24)}...`
-                        )
-                        const placeholderUrl = `https://placehold.co/768x432/png?text=${label}`
-                        setJournalIllustrationUrl(placeholderUrl)
-                        setJournalIllustrationSaved(false)
+                      onClick={async () => {
+                        setJournalIllustrationLoading(true)
+                        try {
+                          const response = await fetch('/api/generate-image', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              type: 'event',
+                              data: {
+                                text: newJournalEntry.content,
+                              },
+                              fallcrestFilter: journalFallcrestFilter,
+                            }),
+                          })
+                          const json = await response.json()
+                          if (json?.imageUrl) {
+                            setJournalIllustrationUrl(json.imageUrl)
+                            setJournalIllustrationSaved(false)
+                          } else {
+                            alert('Illustration konnte nicht generiert werden.')
+                          }
+                        } catch (error) {
+                          alert('Illustration konnte nicht generiert werden.')
+                        } finally {
+                          setJournalIllustrationLoading(false)
+                        }
                       }}
-                      disabled={!canGenerateJournalIllustration}
+                      disabled={!canGenerateJournalIllustration || journalIllustrationLoading}
                       className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
                     >
-                      Illustration generieren
+                      {journalIllustrationLoading ? 'Generiere...' : 'Illustration generieren'}
                     </button>
                   </div>
                 )}
@@ -1642,7 +1815,15 @@ export default function SpielleiterPage() {
                   const fantasyDate = entry.fantasyDate 
                     ? formatFantasyDate(entry.fantasyDate, true, entry.timeOfDay)
                     : entry.timestamp 
-                      ? formatFantasyDate(realDateToFantasyDate(entry.timestamp), true, entry.timeOfDay)
+                      ? formatFantasyDate(
+                          realDateToFantasyDate(
+                            entry.timestamp,
+                            fantasyCalendarStart?.startDate,
+                            fantasyCalendarStart?.realStartDate ? new Date(fantasyCalendarStart.realStartDate) : undefined
+                          ),
+                          true,
+                          entry.timeOfDay
+                        )
                       : null
                   const specialEvent = entry.fantasyDate ? getSpecialEvent(entry.fantasyDate) : null
                   const monthInfo = entry.fantasyDate ? getMonthInfo(entry.fantasyDate.month) : null
@@ -2084,16 +2265,17 @@ export default function SpielleiterPage() {
                       <button
                         onClick={() => {
                           if (newSkill.name.trim()) {
-                            addSkill({
+                            const created = addSkill({
                               name: newSkill.name.trim(),
                               attribute: newSkill.attribute,
                               bonusDice: 0,
                               specializations: [],
                               isWeakened: newSkill.isWeakened,
-                              isCustom: false,
+                              isCustom: true,
                               description: newSkill.description || undefined,
                             })
                             setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
+                            setEditingSkill(created)
                             loadData()
                           }
                         }}
@@ -2188,6 +2370,314 @@ export default function SpielleiterPage() {
           </div>
         )}
 
+        {/* Bestiary Tab */}
+        {activeTab === 'bestiary' && (
+          <div className="space-y-6">
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h2 className="text-2xl font-bold text-white mb-4">Bestiarium verwalten</h2>
+
+              <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10">
+                <h3 className="text-lg font-semibold text-white mb-3">
+                  {editingMonster ? 'Monster bearbeiten' : 'Neues Monster hinzufügen'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={monsterForm.name}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, name: e.target.value })}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  <select
+                    value={monsterForm.type}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, type: e.target.value })}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  >
+                    {['Bestie', 'Untoter', 'Humanoid', 'Geist', 'Konstrukt', 'Drache', 'Elementar', 'Dämon', 'Ooze', 'Pflanze'].map(type => (
+                      <option key={type} value={type} className="bg-slate-800">{type}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="Level"
+                    value={monsterForm.level}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, level: Number(e.target.value) })}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="Max HP"
+                    value={monsterForm.maxHp}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, maxHp: Number(e.target.value) })}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Rasse (optional)"
+                    value={monsterForm.race}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, race: e.target.value })}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  <textarea
+                    placeholder="Fähigkeiten / Skill-Pools (kommagetrennt oder neue Zeile)"
+                    value={monsterForm.abilities}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, abilities: e.target.value })}
+                    rows={2}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Tags mit # (z.B. #fallcrest #nebel)"
+                    value={monsterForm.tags}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, tags: e.target.value })}
+                    className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+                <div className="mt-4">
+                  <textarea
+                    placeholder="Kurzbeschreibung"
+                    value={monsterForm.description}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, description: e.target.value })}
+                    rows={3}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+                <div className="mt-4">
+                  <textarea
+                    placeholder="Fallcrest-Twist (Bezug zu Nebel, Dunst, Artefakten)"
+                    value={monsterForm.fallcrestTwist}
+                    onChange={(e) => setMonsterForm({ ...monsterForm, fallcrestTwist: e.target.value })}
+                    rows={2}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <h4 className="text-white/90 font-semibold mb-2">Attribute</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {BESTIARY_ATTRIBUTES.map((attr) => (
+                      <div key={attr} className="flex flex-col gap-1">
+                        <label className="text-white/70 text-xs">{attr}</label>
+                        <input
+                          type="text"
+                          value={monsterForm.attributes[attr]}
+                          onChange={(e) =>
+                            setMonsterForm({
+                              ...monsterForm,
+                              attributes: { ...monsterForm.attributes, [attr]: e.target.value },
+                            })
+                          }
+                          className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={monsterFallcrestFilter}
+                      onChange={(e) => setMonsterFallcrestFilter(e.target.checked)}
+                      className="rounded"
+                    />
+                    Fallcrest-Artefakt-Nässe aktivieren
+                  </label>
+                  <button
+                    onClick={handleGenerateMonsterImage}
+                    disabled={monsterImageLoading || !monsterForm.name.trim()}
+                    className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                  >
+                    {monsterImageLoading ? 'Generiere...' : 'Monster-Bild generieren'}
+                  </button>
+
+                  {monsterImageUrl && (
+                    <div className="space-y-3">
+                      <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={monsterImageUrl}
+                          alt="Generiertes Monsterbild"
+                          className="w-full max-w-sm rounded-lg border border-white/10"
+                        />
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={() => {
+                            setMonsterImageUrl(null)
+                            setMonsterImageSaved(false)
+                          }}
+                          className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                        >
+                          Verwerfen / Neuer Versuch
+                        </button>
+                        <button
+                          onClick={() => setMonsterImageSaved(true)}
+                          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                        >
+                          Speichern
+                        </button>
+                      </div>
+                      {monsterImageSaved && (
+                        <div className="text-green-400 text-sm">Bild wird beim Speichern des Monsters übernommen.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={handleSaveMonster}
+                    className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                  >
+                    {editingMonster ? 'Änderungen speichern' : 'Monster anlegen'}
+                  </button>
+                  {editingMonster && (
+                    <button
+                      onClick={resetMonsterForm}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 className="text-lg font-semibold text-white">Monsterliste</h3>
+                <input
+                  type="text"
+                  value={bestiaryTagFilter}
+                  onChange={(e) => setBestiaryTagFilter(e.target.value)}
+                  placeholder="Tag filtern (z.B. #fallcrest)"
+                  className="w-full md:w-72 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+              </div>
+
+              <div className="space-y-4">
+                {bestiary.length === 0 ? (
+                  <div className="text-white/60">Noch keine Monster angelegt.</div>
+                ) : filteredBestiary.length === 0 ? (
+                  <div className="text-white/60">Keine Monster für diesen Tag gefunden.</div>
+                ) : (
+                  filteredBestiary.map((monster) => (
+                    <div key={monster.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                      <div className="flex flex-col md:flex-row md:items-start gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <h3 className="text-lg font-semibold text-white">{monster.name}</h3>
+                            <span className="text-xs bg-white/10 text-white/80 px-2 py-1 rounded-full">{monster.type}</span>
+                            {monster.level && (
+                              <span className="text-xs bg-white/10 text-white/80 px-2 py-1 rounded-full">Stufe {monster.level}</span>
+                            )}
+                          </div>
+                          {monster.description && (
+                            <p className="text-white/70 mt-2">{monster.description}</p>
+                          )}
+                          {monster.abilities && monster.abilities.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {monster.abilities.map((ability) => (
+                                <span key={ability} className="text-xs bg-white/10 text-white/80 px-2 py-1 rounded-full border border-white/10">
+                                  {ability}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {monster.tags && monster.tags.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {monster.tags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-white/90 bg-gradient-to-br from-white/20 to-white/5 border border-white/20 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {monster.fallcrestTwist && (
+                            <p className="text-white/60 mt-3">
+                              <span className="text-white/80">Fallcrest-Twist:</span> {monster.fallcrestTwist}
+                            </p>
+                          )}
+                          {expandedMonsterId === monster.id && (
+                            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-white/80">
+                              {Object.entries(monster.attributes || {}).map(([key, value]) => (
+                                <div key={key} className="bg-white/5 rounded-lg px-3 py-2 border border-white/10">
+                                  <span className="text-white/70">{key}:</span> {value}
+                                </div>
+                              ))}
+                              <div className="bg-white/5 rounded-lg px-3 py-2 border border-white/10">
+                                <span className="text-white/70">Max HP:</span> {monster.maxHp}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        {monster.imageUrl && (
+                          <div className="bg-white/5 p-2 rounded-lg border border-white/10">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={monster.imageUrl}
+                              alt={`Monsterbild ${monster.name}`}
+                              className="w-full max-w-xs rounded-lg border border-white/10"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={() => setExpandedMonsterId(expandedMonsterId === monster.id ? null : monster.id)}
+                          className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-sm"
+                        >
+                          {expandedMonsterId === monster.id ? 'Details ausblenden' : 'Details anzeigen'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingMonster(monster)
+                            setMonsterForm({
+                              name: monster.name,
+                              type: monster.type,
+                              level: monster.level || 1,
+                              race: monster.race || '',
+                              description: monster.description || '',
+                              abilities: (monster.abilities || []).join(', '),
+                              maxHp: monster.maxHp || 1,
+                              fallcrestTwist: monster.fallcrestTwist || '',
+                              tags: (monster.tags || []).map(tag => `#${tag}`).join(' '),
+                              attributes: { ...DEFAULT_MONSTER_ATTRIBUTES, ...(monster.attributes || {}) },
+                            })
+                            setMonsterImageUrl(monster.imageUrl || null)
+                            setMonsterImageSaved(!!monster.imageUrl)
+                          }}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`"${monster.name}" wirklich löschen?`)) {
+                              const ok = await removeBestiary(monster.id)
+                              if (ok) {
+                                await loadData()
+                              }
+                            }
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
@@ -2217,9 +2707,11 @@ export default function SpielleiterPage() {
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-3 mb-2 flex-wrap">
-                                  <span className="text-white font-bold text-lg">
-                                    {member.player_name}
-                                  </span>
+                                  {!isGM && (
+                                    <span className="text-white font-bold text-lg">
+                                      {member.player_name}
+                                    </span>
+                                  )}
                                   {isGM && (
                                     <span className="text-xs bg-gradient-to-r from-purple-500/30 to-indigo-500/30 text-purple-200 px-3 py-1.5 rounded-full border border-purple-400/30 backdrop-blur-sm font-semibold shadow-lg">
                                       ✨ Spielleiter
@@ -2248,7 +2740,7 @@ export default function SpielleiterPage() {
                                 <button
                                   onClick={async () => {
                                     if (confirm(`Möchtest du ${member.player_name} wirklich aus der Gruppe entfernen? Alle Charaktere werden gelöscht.`)) {
-                                      const success = await removePlayerFromGroup(groupId!, member.player_name)
+                                      const success = await removePlayerFromGroup(groupId!, member.id, member.player_name)
                                       if (success) {
                                         await loadData()
                                         alert(`${member.player_name} wurde aus der Gruppe entfernt.`)
