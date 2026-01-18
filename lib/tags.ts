@@ -1,4 +1,4 @@
-const TAG_REGEX = /#([a-zA-Z0-9À-ž_-+]+)/g
+const TAG_REGEX = /#([a-zA-Z0-9À-ž_-]+)/g
 
 export const normalizeTag = (tag: string): string =>
   tag.replace(/^#+/, '').trim().toLowerCase()
