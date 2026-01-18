@@ -1,6 +1,7 @@
 import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings } from '@/types'
 import { getAllSkills } from '@/lib/skills'
 import { createSupabaseClient } from './supabase'
+import { parseD6Value } from './dice'
 import {
   getCharactersFromSupabase,
   saveCharacterToSupabase,
@@ -400,14 +401,22 @@ export const updateSkill = (skillId: string, updates: Partial<Skill>): boolean =
 
 // Charaktererstellungs-Einstellungen
 export const getCharacterCreationSettings = (): CharacterCreationSettings => {
+  const defaults: CharacterCreationSettings = {
+    maxAttributePoints: 7,
+    maxSkillPoints: 8,
+    maxBlibs: 4,
+    maxAttributeDicePerAttribute: 2,
+    maxSkillDicePerSkill: 2,
+    maxBlibsPerSpecialization: 2,
+    defaultStartBlips: 67,
+  }
   if (typeof window === 'undefined') {
-    return { maxAttributePoints: 7, maxSkillPoints: 8, maxBlibs: 4 }
+    return defaults
   }
   const stored = localStorage.getItem('characterCreationSettings')
   if (stored) {
-    return JSON.parse(stored)
+    return { ...defaults, ...JSON.parse(stored) }
   }
-  const defaults = { maxAttributePoints: 7, maxSkillPoints: 8, maxBlibs: 4 }
   saveCharacterCreationSettings(defaults)
   return defaults
 }
@@ -518,9 +527,12 @@ export const calculateCharacterPoints = (character: Character): {
   usedAttributePoints: number
   usedSkillPoints: number
   usedBlibs: number
+  usedBlips: number
   remainingAttributePoints: number
   remainingSkillPoints: number
   remainingBlibs: number
+  remainingBlips: number
+  totalBlipBudget: number
 } => {
   const settings = getCharacterCreationSettings()
   
@@ -545,13 +557,46 @@ export const calculateCharacterPoints = (character: Character): {
   const usedBlibs = character.skills.reduce((sum, skill) => 
     sum + skill.specializations.reduce((specSum, spec) => specSum + spec.blibs, 0), 0
   )
+
+  const calculateStepCost = (totalSteps: number): number => {
+    let totalBlips = 0
+    for (let i = 1; i <= totalSteps; i += 1) {
+      totalBlips += Math.ceil(i / 3)
+    }
+    return totalBlips
+  }
+
+  const getStepsFromD6 = (value: string): number => {
+    const { diceCount, modifier } = parseD6Value(value)
+    return diceCount * 3 + modifier
+  }
+
+  const usedBlipsFromAttributes = Object.entries(character.attributes || {}).reduce((sum, [attrName, attrValue]) => {
+    const base = BASE_VALUES[attrName] || '2D'
+    const steps = Math.max(0, getStepsFromD6(attrValue) - getStepsFromD6(base))
+    return sum + calculateStepCost(steps)
+  }, 0)
+
+  const usedBlipsFromSkills = character.skills.reduce((sum, skill) => {
+    const skillSteps = Math.max(0, (skill.bonusDice || 0) * 3)
+    const skillCost = calculateStepCost(skillSteps)
+    const specCost = skill.specializations.reduce((specSum, spec) => specSum + calculateStepCost(spec.blibs || 0), 0)
+    return sum + skillCost + specCost
+  }, 0)
+
+  const usedBlips = usedBlipsFromAttributes + usedBlipsFromSkills
+  const totalBlipBudget = (settings.defaultStartBlips || 0) + (character.earnedBlips || 0)
+  const remainingBlips = totalBlipBudget - usedBlips
   
   return {
     usedAttributePoints,
     usedSkillPoints,
     usedBlibs,
+    usedBlips,
     remainingAttributePoints: settings.maxAttributePoints - usedAttributePoints,
     remainingSkillPoints: settings.maxSkillPoints - usedSkillPoints,
     remainingBlibs: settings.maxBlibs - usedBlibs,
+    remainingBlips,
+    totalBlipBudget,
   }
 }

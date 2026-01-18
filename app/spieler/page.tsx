@@ -311,6 +311,7 @@ export default function SpielerPage() {
         playerName={playerName}
         onComplete={handleCharacterCreated}
         onCancel={() => setShowCharacterCreation(false)}
+        existingCharacter={selectedCharacter}
       />
     )
   }
@@ -640,46 +641,33 @@ export default function SpielerPage() {
                 />
               </div>
 
-              {/* Punkte-Status (immer neu berechnet) */}
+              {/* Blip-Status (immer neu berechnet) */}
               {(() => {
-                const settings = getCharacterCreationSettings()
                 const pointsStatus = calculateCharacterPoints(selectedCharacter)
-                const hasRemainingPoints = pointsStatus.remainingAttributePoints > 0 || 
-                                          pointsStatus.remainingSkillPoints > 0 || 
-                                          pointsStatus.remainingBlibs > 0
+                const hasRemainingPoints = pointsStatus.remainingBlips > 0
                 return (
                   <div className={`mt-4 p-4 rounded-lg border ${
                     hasRemainingPoints
                       ? 'bg-green-600/20 border-green-600'
                       : 'bg-white/5 border-white/10'
                   }`}>
-                    <h3 className="text-white font-semibold mb-2">Punkte-Status</h3>
+                    <h3 className="text-white font-semibold mb-2">Blip-Status</h3>
                     <div className="text-sm text-white/70 space-y-1">
                       <p>
-                        Attributspunkte: {pointsStatus.usedAttributePoints} / {settings.maxAttributePoints}
-                        {pointsStatus.remainingAttributePoints > 0 && (
+                        Blips: Komplett {pointsStatus.totalBlipBudget} / Verbraucht {pointsStatus.usedBlips}
+                        {pointsStatus.remainingBlips > 0 && (
                           <span className="text-green-400 ml-2">
-                            ({pointsStatus.remainingAttributePoints} übrig)
-                          </span>
-                        )}
-                      </p>
-                      <p>
-                        Fertigkeitspunkte: {pointsStatus.usedSkillPoints} / {settings.maxSkillPoints}
-                        {pointsStatus.remainingSkillPoints > 0 && (
-                          <span className="text-green-400 ml-2">
-                            ({pointsStatus.remainingSkillPoints} übrig)
-                          </span>
-                        )}
-                      </p>
-                      <p>
-                        Blibs: {pointsStatus.usedBlibs} / {settings.maxBlibs}
-                        {pointsStatus.remainingBlibs > 0 && (
-                          <span className="text-green-400 ml-2">
-                            ({pointsStatus.remainingBlibs} übrig)
+                            ({pointsStatus.remainingBlips} übrig)
                           </span>
                         )}
                       </p>
                     </div>
+                    <button
+                      onClick={() => setShowCharacterCreation(true)}
+                      className="mt-3 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-semibold transition-colors"
+                    >
+                      Charakter steigern
+                    </button>
                   </div>
                 )
               })()}
@@ -773,7 +761,10 @@ export default function SpielerPage() {
                     {combatSkills.map((skill) => {
                       const attributeValue = selectedCharacter.attributes[skill.attribute] || '1D'
                       const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                      const skillBlibs = skill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                      const skillBlibs = (skill.specializations || []).reduce(
+                        (max, spec) => Math.max(max, spec.blibs || 0),
+                        0
+                      )
                       const skillDiceFormula = calculateSkillValue(
                         attributeValue,
                         skill.bonusDice,
@@ -886,7 +877,10 @@ export default function SpielerPage() {
                       <div className="space-y-2">
                         {skillsForAttribute.map((skill) => {
                           const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                          const skillBlibs = skill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                          const skillBlibs = (skill.specializations || []).reduce(
+                            (max, spec) => Math.max(max, spec.blibs || 0),
+                            0
+                          )
                           const skillDiceFormula = calculateSkillValue(
                             attributeValue,
                             skill.bonusDice,

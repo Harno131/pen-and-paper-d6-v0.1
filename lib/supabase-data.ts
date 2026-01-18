@@ -374,6 +374,7 @@ export const getCharactersFromSupabase = async (groupId: string): Promise<Charac
     attributePointsUsed: char.attribute_points_used,
     skillPointsUsed: char.skill_points_used,
     blibsUsed: char.blibs_used,
+    earnedBlips: char.earned_blips || 0,
   }))
 }
 
@@ -412,6 +413,7 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
       attribute_points_used: character.attributePointsUsed,
       skill_points_used: character.skillPointsUsed,
       blibs_used: character.blibsUsed,
+      earned_blips: character.earnedBlips || 0,
     })
 
   return !error

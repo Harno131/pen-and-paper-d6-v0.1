@@ -57,6 +57,7 @@ export interface Character {
   attributePointsUsed?: number // Verwendete Attributspunkte bei Erstellung
   skillPointsUsed?: number // Verwendete Fertigkeitspunkte bei Erstellung
   blibsUsed?: number // Verwendete Blibs bei Erstellung
+  earnedBlips?: number // Verdiente Blips durch Belohnungen
   // Verwundungen
   currentHP?: number // Aktuelle Trefferpunkte
   maxHP?: number // Maximale Trefferpunkte
@@ -176,6 +177,10 @@ export interface CharacterCreationSettings {
   maxAttributePoints: number // Standard: 7
   maxSkillPoints: number // Standard: 8
   maxBlibs: number // Standard: 4
+  maxAttributeDicePerAttribute: number // Standard: 2
+  maxSkillDicePerSkill: number // Standard: 2
+  maxBlibsPerSpecialization: number // Standard: 2
+  defaultStartBlips: number // Standard: 67
   fantasyCalendar?: FantasyCalendarSettings
 }
 

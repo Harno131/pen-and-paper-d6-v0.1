@@ -62,6 +62,9 @@ export default function SpielleiterPage() {
   const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
+  const [rewardGroupBlips, setRewardGroupBlips] = useState('')
+  const [rewardSingleBlips, setRewardSingleBlips] = useState('')
+  const [rewardCharacterId, setRewardCharacterId] = useState('')
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
@@ -209,6 +212,24 @@ export default function SpielleiterPage() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [activeTab])
+
+  const applyBlipRewards = (updater: (char: Character) => Character) => {
+    const updated = characters.map((char) => {
+      if (char.deletedDate || char.isNPC) return char
+      return updater(char)
+    })
+    setCharacters(updated)
+    saveCharacters(updated)
+  }
+
+  const parseRewardValue = (value: string): number | null => {
+    const amount = parseInt(value)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Bitte eine gültige Blip-Zahl eingeben.')
+      return null
+    }
+    return amount
+  }
 
   const resetMonsterForm = () => {
     setEditingMonster(null)
@@ -681,7 +702,10 @@ export default function SpielleiterPage() {
                   if (dodgeSkill) {
                     const attributeValue = char.attributes[dodgeSkill.attribute] || '1D'
                     const isLearned = dodgeSkill.bonusDice > 0 || (dodgeSkill.specializations && dodgeSkill.specializations.some(s => s.blibs > 0))
-                    const skillBlibs = dodgeSkill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                    const skillBlibs = (dodgeSkill.specializations || []).reduce(
+                      (max, spec) => Math.max(max, spec.blibs || 0),
+                      0
+                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       dodgeSkill.bonusDice,
@@ -703,7 +727,10 @@ export default function SpielleiterPage() {
                   if (meleeSkill) {
                     const attributeValue = char.attributes[meleeSkill.attribute] || '1D'
                     const isLearned = meleeSkill.bonusDice > 0 || (meleeSkill.specializations && meleeSkill.specializations.some(s => s.blibs > 0))
-                    const skillBlibs = meleeSkill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                    const skillBlibs = (meleeSkill.specializations || []).reduce(
+                      (max, spec) => Math.max(max, spec.blibs || 0),
+                      0
+                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       meleeSkill.bonusDice,
@@ -724,7 +751,10 @@ export default function SpielleiterPage() {
                   if (rangedSkill) {
                     const attributeValue = char.attributes[rangedSkill.attribute] || '1D'
                     const isLearned = rangedSkill.bonusDice > 0 || (rangedSkill.specializations && rangedSkill.specializations.some(s => s.blibs > 0))
-                    const skillBlibs = rangedSkill.specializations?.reduce((sum, s) => sum + s.blibs, 0) || 0
+                    const skillBlibs = (rangedSkill.specializations || []).reduce(
+                      (max, spec) => Math.max(max, spec.blibs || 0),
+                      0
+                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       rangedSkill.bonusDice,
@@ -1384,7 +1414,10 @@ export default function SpielleiterPage() {
                     // Hauptfertigkeit
                     const attributeValue = character.attributes[attribute] || '1D'
                     const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some((s: any) => s.blibs > 0))
-                    const skillBlibs = skill.specializations?.reduce((sum: number, s: any) => sum + s.blibs, 0) || 0
+                    const skillBlibs = (skill.specializations || []).reduce(
+                      (max, spec) => Math.max(max, spec.blibs || 0),
+                      0
+                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       skill.bonusDice,
@@ -1758,6 +1791,93 @@ export default function SpielleiterPage() {
                       Abbrechen
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Blip-Belohnungen */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h2 className="text-2xl font-bold text-white mb-4">Blip-Belohnungen</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                  <h3 className="text-white font-semibold mb-3">Gruppen-Belohnung</h3>
+                  <div className="flex gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="z.B. 3"
+                      value={rewardGroupBlips}
+                      onChange={(e) => setRewardGroupBlips(e.target.value)}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    <button
+                      onClick={() => {
+                        const amount = parseRewardValue(rewardGroupBlips)
+                        if (!amount) return
+                        applyBlipRewards((char) => ({
+                          ...char,
+                          earnedBlips: (char.earnedBlips || 0) + amount,
+                        }))
+                        setRewardGroupBlips('')
+                      }}
+                      className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold"
+                    >
+                      Alle belohnen
+                    </button>
+                  </div>
+                  <p className="text-white/60 text-sm mt-2">
+                    Fügt Blips zu allen Spieler-Charakteren hinzu.
+                  </p>
+                </div>
+
+                <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                  <h3 className="text-white font-semibold mb-3">Einzel-Belohnung</h3>
+                  <div className="space-y-3">
+                    <select
+                      value={rewardCharacterId}
+                      onChange={(e) => setRewardCharacterId(e.target.value)}
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      <option value="" className="bg-slate-800">Charakter auswählen</option>
+                      {characters.filter(c => !c.deletedDate && !c.isNPC).map((char) => (
+                        <option key={char.id} value={char.id} className="bg-slate-800">
+                          {char.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="z.B. 2"
+                        value={rewardSingleBlips}
+                        onChange={(e) => setRewardSingleBlips(e.target.value)}
+                        className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                      />
+                      <button
+                        onClick={() => {
+                          const amount = parseRewardValue(rewardSingleBlips)
+                          if (!amount || !rewardCharacterId) {
+                            alert('Bitte Charakter wählen und Blips angeben.')
+                            return
+                          }
+                          applyBlipRewards((char) => (
+                            char.id === rewardCharacterId
+                              ? { ...char, earnedBlips: (char.earnedBlips || 0) + amount }
+                              : char
+                          ))
+                          setRewardSingleBlips('')
+                          setRewardCharacterId('')
+                        }}
+                        className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold"
+                      >
+                        Einzel belohnen
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-white/60 text-sm mt-2">
+                    Für besondere Leistungen eines einzelnen Charakters.
+                  </p>
                 </div>
               </div>
             </div>
@@ -2813,6 +2933,39 @@ export default function SpielleiterPage() {
 
                 <div>
                   <label className="block text-white/90 mb-2 font-medium">
+                    Max. Würfel pro Attribut (Standard 2):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.maxAttributeDicePerAttribute}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === '') {
+                        setSettings({ ...settings, maxAttributeDicePerAttribute: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 10) {
+                        const newSettings = { ...settings, maxAttributeDicePerAttribute: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, maxAttributeDicePerAttribute: 2 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-white/90 mb-2 font-medium">
                     Maximale Fertigkeitspunkte (D6):
                   </label>
                   <input
@@ -2836,6 +2989,39 @@ export default function SpielleiterPage() {
                     onBlur={(e) => {
                       if (e.target.value === '' || parseInt(e.target.value) < 1) {
                         const newSettings = { ...settings, maxSkillPoints: 8 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-white/90 mb-2 font-medium">
+                    Max. Würfel pro Fertigkeit (Standard 2):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.maxSkillDicePerSkill}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === '') {
+                        setSettings({ ...settings, maxSkillDicePerSkill: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 10) {
+                        const newSettings = { ...settings, maxSkillDicePerSkill: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, maxSkillDicePerSkill: 2 }
                         setSettings(newSettings)
                         saveCharacterCreationSettings(newSettings)
                       }
@@ -2876,18 +3062,82 @@ export default function SpielleiterPage() {
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-white/90 mb-2 font-medium">
+                    Max. Blibs je Spezialisierung (Standard 2):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="6"
+                    value={settings.maxBlibsPerSpecialization}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === '') {
+                        setSettings({ ...settings, maxBlibsPerSpecialization: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 6) {
+                        const newSettings = { ...settings, maxBlibsPerSpecialization: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, maxBlibsPerSpecialization: 2 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-white/90 mb-2 font-medium">
+                    Default Start-Blips (Standard 67):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    value={settings.defaultStartBlips}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === '') {
+                        setSettings({ ...settings, defaultStartBlips: 0 })
+                        return
+                      }
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 200) {
+                        const newSettings = { ...settings, defaultStartBlips: numValue }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                        const newSettings = { ...settings, defaultStartBlips: 67 }
+                        setSettings(newSettings)
+                        saveCharacterCreationSettings(newSettings)
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Charaktere mit Punkte-Status */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <h2 className="text-2xl font-bold text-white mb-4">Punkte-Status der Charaktere</h2>
+              <h2 className="text-2xl font-bold text-white mb-4">Blip-Status der Charaktere</h2>
               <div className="space-y-4">
                 {characters.map(character => {
                   const pointsStatus = calculateCharacterPoints(character)
-                  const hasRemainingPoints = pointsStatus.remainingAttributePoints > 0 || 
-                                            pointsStatus.remainingSkillPoints > 0 || 
-                                            pointsStatus.remainingBlibs > 0
+                  const hasRemainingPoints = pointsStatus.remainingBlips > 0
                   return (
                     <div key={character.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
                       <div className="flex items-start justify-between">
@@ -2897,26 +3147,10 @@ export default function SpielleiterPage() {
                           </h3>
                           <div className="text-sm text-white/70 space-y-1">
                             <p>
-                              Attributspunkte: {pointsStatus.usedAttributePoints} / {settings.maxAttributePoints}
-                              {pointsStatus.remainingAttributePoints > 0 && (
+                              Blips: {pointsStatus.usedBlips} / {pointsStatus.totalBlipBudget}
+                              {pointsStatus.remainingBlips > 0 && (
                                 <span className="text-green-400 ml-2">
-                                  (+{pointsStatus.remainingAttributePoints} übrig)
-                                </span>
-                              )}
-                            </p>
-                            <p>
-                              Fertigkeitspunkte: {pointsStatus.usedSkillPoints} / {settings.maxSkillPoints}
-                              {pointsStatus.remainingSkillPoints > 0 && (
-                                <span className="text-green-400 ml-2">
-                                  (+{pointsStatus.remainingSkillPoints} übrig)
-                                </span>
-                              )}
-                            </p>
-                            <p>
-                              Blibs: {pointsStatus.usedBlibs} / {settings.maxBlibs}
-                              {pointsStatus.remainingBlibs > 0 && (
-                                <span className="text-green-400 ml-2">
-                                  (+{pointsStatus.remainingBlibs} übrig)
+                                  (+{pointsStatus.remainingBlips} übrig)
                                 </span>
                               )}
                             </p>

@@ -27,7 +27,9 @@ export default function SkillDiceRoller({
   // Berechne den finalen D6-Wert der Fertigkeit
   const attributeValue = character.attributes[skill.attribute] || '1D'
   const isLearned = skill.bonusDice > 0 || (specialization && specialization.blibs > 0)
-  const skillBlibs = specialization ? specialization.blibs : 0
+  const skillBlibs = specialization
+    ? specialization.blibs
+    : (skill.specializations || []).reduce((max, spec) => Math.max(max, spec.blibs || 0), 0)
   const skillDiceFormula = calculateSkillValue(
     attributeValue,
     skill.bonusDice,
