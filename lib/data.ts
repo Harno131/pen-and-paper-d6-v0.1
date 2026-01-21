@@ -345,6 +345,7 @@ export const getAvailableSkills = (): Skill[] => {
     const skills = JSON.parse(stored)
     return skills.map((skill: any) => ({
       ...skill,
+      bonusSteps: skill.bonusSteps || 0,
       specializations: skill.specializations || [],
     }))
   }
@@ -354,6 +355,7 @@ export const getAvailableSkills = (): Skill[] => {
     name: s.name,
     attribute: s.attribute,
     bonusDice: 0,
+    bonusSteps: 0,
     specializations: [],
     isWeakened: false,
     isCustom: false,
@@ -578,7 +580,7 @@ export const calculateCharacterPoints = (character: Character): {
   }, 0)
 
   const usedBlipsFromSkills = character.skills.reduce((sum, skill) => {
-    const skillSteps = Math.max(0, (skill.bonusDice || 0) * 3)
+    const skillSteps = Math.max(0, (skill.bonusDice || 0) * 3 + (skill.bonusSteps || 0))
     const skillCost = calculateStepCost(skillSteps)
     const specCost = skill.specializations.reduce((specSum, spec) => specSum + calculateStepCost(spec.blibs || 0), 0)
     return sum + skillCost + specCost

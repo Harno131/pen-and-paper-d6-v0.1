@@ -23,6 +23,7 @@ export interface Skill {
   name: string
   attribute: string
   bonusDice: number // Anzahl zusätzlicher D6 (0-8 insgesamt)
+  bonusSteps?: number // Zusatzschritte (+1, +2) ohne ganze D6
   specializations: Specialization[] // Spezialisierungen (z.B. "Schwert" für bewaffneter Nahkampf)
   isWeakened?: boolean // Geschwächte Fertigkeit (kann ohne Fertigkeitspunkt/Blip nicht ausgeführt werden)
   isCustom?: boolean // Eigene Fertigkeit des Spielers

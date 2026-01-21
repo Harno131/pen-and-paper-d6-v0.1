@@ -83,6 +83,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
   const [portraitSaved, setPortraitSaved] = useState(!!editingNpc?.profileImageUrl)
   const [portraitLoading, setPortraitLoading] = useState(false)
   const [portraitFallcrestFilter, setPortraitFallcrestFilter] = useState(true)
+  const [portraitError, setPortraitError] = useState('')
   const [tagInput, setTagInput] = useState(
     editingNpc?.tags && editingNpc.tags.length > 0 ? editingNpc.tags.map(tag => `#${tag}`).join(' ') : ''
   )
@@ -152,6 +153,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
     ].filter(Boolean)
 
     setPortraitLoading(true)
+    setPortraitError('')
     try {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
@@ -168,14 +170,15 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
         }),
       })
       const json = await response.json()
-      if (json?.imageUrl) {
+      if (response.ok && json?.imageUrl) {
         setPortraitUrl(json.imageUrl)
         setPortraitSaved(false)
       } else {
-        alert('Bild konnte nicht generiert werden.')
+        const reason = json?.error || 'Bild konnte nicht generiert werden.'
+        setPortraitError(reason)
       }
     } catch (error) {
-      alert('Bildgenerierung fehlgeschlagen.')
+      setPortraitError('Bildgenerierung fehlgeschlagen. Prüfe Internetverbindung und API-Key.')
     } finally {
       setPortraitLoading(false)
     }
@@ -483,6 +486,15 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
               >
                 {portraitLoading ? 'Generiere...' : 'Porträt generieren'}
               </button>
+              {portraitError && (
+                <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="font-semibold mb-1">Bild nicht generiert</div>
+                  <div>{portraitError}</div>
+                  <div className="text-white/60 mt-2">
+                    Hinweis: Wenn der API-Key fehlt, bitte `GEMINI_API_KEY` setzen und den Server neu starten.
+                  </div>
+                </div>
+              )}
 
               {portraitUrl && (
                 <div className="space-y-3">

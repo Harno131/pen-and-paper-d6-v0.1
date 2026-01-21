@@ -452,6 +452,7 @@ export const getAvailableSkillsFromSupabase = async (groupId: string): Promise<S
     name: skill.name,
     attribute: skill.attribute,
     bonusDice: 0,
+    bonusSteps: 0,
     specializations: [],
     isWeakened: skill.is_weakened || false,
     isCustom: skill.is_custom || false,

@@ -132,3 +132,7 @@ export function calculateSkillValue(
   return `${baseDice}D${totalModifier > 0 ? `+${totalModifier}` : ''}`
 }
 
+export function getBaseSkillBlibs(skill: Pick<Skill, 'specializations'>): number {
+  const specs = skill.specializations || []
+  return specs.reduce((max, spec) => Math.max(max, spec.blibs || 0), 0)
+}

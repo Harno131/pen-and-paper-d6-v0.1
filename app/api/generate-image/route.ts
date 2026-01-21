@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      return NextResponse.json({ imageUrl: buildPlaceholderUrl(prompt), prompt, warning: 'GEMINI_API_KEY fehlt' })
+      return NextResponse.json({ error: 'GEMINI_API_KEY fehlt. Bitte in der Umgebung setzen.' }, { status: 500 })
     }
 
     const response = await fetch(
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text()
-      return NextResponse.json({ imageUrl: buildPlaceholderUrl(prompt), prompt, warning: errorText }, { status: 200 })
+      return NextResponse.json({ error: errorText || 'Gemini-Bildgenerierung fehlgeschlagen.' }, { status: 500 })
     }
 
     const data = await response.json()
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       null
 
     if (!imageBytes) {
-      return NextResponse.json({ imageUrl: buildPlaceholderUrl(prompt), prompt, warning: 'Keine Bilddaten erhalten' })
+      return NextResponse.json({ error: 'Keine Bilddaten erhalten.' }, { status: 500 })
     }
 
     const imageUrl = `data:image/png;base64,${imageBytes}`

@@ -42,7 +42,7 @@ const BASE_VALUES: { [key: string]: string } = {
 const RACES = ['Mensch', 'Elf', 'Halb-Elf', 'Zwerg', 'Halbling', 'Gnom', 'Halbork', 'Drakonier', 'Andere']
 const CLASSES = ['Krieger', 'Magier', 'Dieb', 'Kleriker', 'Barde', 'Jäger', 'Händler', 'Handwerker', 'Gelehrter', 'Adliger', 'Bauer', 'Soldat', 'Andere']
 
-type CreationStep = 'basics' | 'skills' | 'attributes'
+type CreationStep = 'basics' | 'skills'
 
 export default function CharacterCreationExtended({
   playerName,
@@ -59,8 +59,10 @@ export default function CharacterCreationExtended({
   const [age, setAge] = useState('')
   const [gender, setGender] = useState('')
   const [attributeBonuses, setAttributeBonuses] = useState<{ [key: string]: number }>({})
+  const [attributeStepBonuses, setAttributeStepBonuses] = useState<{ [key: string]: number }>({})
   const [selectedAlignment, setSelectedAlignment] = useState<{ row: number; col: number } | undefined>()
   const [skillBonuses, setSkillBonuses] = useState<{ [skillId: string]: number }>({})
+  const [skillStepBonuses, setSkillStepBonuses] = useState<{ [skillId: string]: number }>({})
   const [customSkills, setCustomSkills] = useState<{ [attribute: string]: string }>({})
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [characterSkills, setCharacterSkills] = useState<{ [skillId: string]: Skill }>({})
@@ -73,6 +75,7 @@ export default function CharacterCreationExtended({
   const [visibleEquipment, setVisibleEquipment] = useState('')
   const [profileImageLoading, setProfileImageLoading] = useState(false)
   const [portraitFallcrestFilter, setPortraitFallcrestFilter] = useState(false)
+  const [profileImageError, setProfileImageError] = useState('')
 
   useEffect(() => {
     const skills = getAvailableSkills()
@@ -84,6 +87,7 @@ export default function CharacterCreationExtended({
       initialSkills[skill.id] = {
         ...skill,
         bonusDice: 0,
+        bonusSteps: 0,
         specializations: [],
       }
     })
@@ -92,14 +96,18 @@ export default function CharacterCreationExtended({
         initialSkills[skill.id] = {
           ...skill,
           bonusDice: skill.bonusDice || 0,
+          bonusSteps: skill.bonusSteps || 0,
           specializations: skill.specializations || [],
         }
       })
       const bonuses: { [skillId: string]: number } = {}
+      const stepBonuses: { [skillId: string]: number } = {}
       existingCharacter.skills.forEach((skill) => {
         bonuses[skill.id] = skill.bonusDice || 0
+        stepBonuses[skill.id] = skill.bonusSteps || 0
       })
       setSkillBonuses(bonuses)
+      setSkillStepBonuses(stepBonuses)
     }
     setCharacterSkills(initialSkills)
   }, [])
@@ -118,27 +126,30 @@ export default function CharacterCreationExtended({
     }
 
     const bonuses: { [key: string]: number } = {}
+    const stepBonuses: { [key: string]: number } = {}
     STANDARD_ATTRIBUTES.forEach((attr) => {
       const base = BASE_VALUES[attr] || '2D'
-      const baseDice = parseD6Value(base).diceCount
+      const baseSteps = getStepsFromD6(base)
       const current = existingCharacter.attributes?.[attr] || base
-      const currentDice = parseD6Value(current).diceCount
-      bonuses[attr] = Math.max(0, currentDice - baseDice)
+      const currentSteps = getStepsFromD6(current)
+      const diffSteps = Math.max(0, currentSteps - baseSteps)
+      bonuses[attr] = Math.floor(diffSteps / 3)
+      stepBonuses[attr] = diffSteps % 3
     })
     setAttributeBonuses(bonuses)
+    setAttributeStepBonuses(stepBonuses)
   }, [existingCharacter])
 
   const getAttributeValue = (attrName: string): string => {
     const base = BASE_VALUES[attrName] || '2D'
     const bonus = attributeBonuses[attrName] || 0
-    
-    if (bonus === 0) {
-      return base
-    }
+    const stepBonus = attributeStepBonuses[attrName] || 0
     
     const { diceCount, modifier } = parseD6Value(base)
-    const newDiceCount = diceCount + bonus
-    return `${newDiceCount}D${modifier > 0 ? `+${modifier}` : ''}`
+    const totalSteps = (diceCount * 3 + modifier) + (bonus * 3) + stepBonus
+    const totalDice = Math.floor(totalSteps / 3)
+    const totalMod = totalSteps % 3
+    return `${totalDice}D${totalMod > 0 ? `+${totalMod}` : ''}`
   }
 
   const calculateStepCost = (totalSteps: number): number => {
@@ -160,7 +171,11 @@ export default function CharacterCreationExtended({
     return Math.max(0, getStepsFromD6(current) - getStepsFromD6(base))
   }
 
-  const getSkillSteps = (skillId: string): number => (skillBonuses[skillId] || 0) * 3
+  const getSkillSteps = (skillId: string): number => {
+    const diceBonus = skillBonuses[skillId] || 0
+    const stepBonus = skillStepBonuses[skillId] || 0
+    return (diceBonus * 3) + stepBonus
+  }
 
   const calculateTotalBlips = (): number => {
     let total = 0
@@ -231,6 +246,7 @@ export default function CharacterCreationExtended({
     const resolvedClass = className === 'Andere' ? otherClass.trim() : className
 
     setProfileImageLoading(true)
+    setProfileImageError('')
     try {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
@@ -249,14 +265,15 @@ export default function CharacterCreationExtended({
         }),
       })
       const json = await response.json()
-      if (json?.imageUrl) {
+      if (response.ok && json?.imageUrl) {
         setProfileImageUrl(json.imageUrl)
         setProfileImageSaved(false)
       } else {
-        alert('Bild konnte nicht generiert werden.')
+        const reason = json?.error || 'Bild konnte nicht generiert werden.'
+        setProfileImageError(reason)
       }
     } catch (error) {
-      alert('Bildgenerierung fehlgeschlagen.')
+      setProfileImageError('Bildgenerierung fehlgeschlagen. Prüfe Internetverbindung und API-Key.')
     } finally {
       setProfileImageLoading(false)
     }
@@ -271,6 +288,33 @@ export default function CharacterCreationExtended({
     }
     if (newValue <= settings.maxAttributeDicePerAttribute) {
       setAttributeBonuses({ ...attributeBonuses, [attrName]: newValue })
+    }
+  }
+
+  const handleAttributeStepChange = (attrName: string, delta: number) => {
+    const currentSteps = attributeStepBonuses[attrName] || 0
+    const currentDice = attributeBonuses[attrName] || 0
+    if (delta > 0) {
+      const costIncrease = getAdditionalStepCost(getAttributeSteps(attrName), 1)
+      if (remainingBlips < costIncrease) return
+      if (currentSteps < 2) {
+        setAttributeStepBonuses({ ...attributeStepBonuses, [attrName]: currentSteps + 1 })
+        return
+      }
+      if (currentSteps === 2 && currentDice < settings.maxAttributeDicePerAttribute) {
+        setAttributeStepBonuses({ ...attributeStepBonuses, [attrName]: 0 })
+        setAttributeBonuses({ ...attributeBonuses, [attrName]: currentDice + 1 })
+      }
+      return
+    }
+
+    if (currentSteps > 0) {
+      setAttributeStepBonuses({ ...attributeStepBonuses, [attrName]: currentSteps - 1 })
+      return
+    }
+    if (currentSteps === 0 && currentDice > 0) {
+      setAttributeStepBonuses({ ...attributeStepBonuses, [attrName]: 2 })
+      setAttributeBonuses({ ...attributeBonuses, [attrName]: currentDice - 1 })
     }
   }
 
@@ -295,6 +339,48 @@ export default function CharacterCreationExtended({
     }
   }
 
+  const handleSkillStepChange = (skillId: string, delta: number) => {
+    const currentSteps = skillStepBonuses[skillId] || 0
+    const currentDice = skillBonuses[skillId] || 0
+    if (delta > 0) {
+      const costIncrease = getAdditionalStepCost(getSkillSteps(skillId), 1)
+      if (remainingBlips < costIncrease) return
+      if (currentSteps < 2) {
+        setSkillStepBonuses({ ...skillStepBonuses, [skillId]: currentSteps + 1 })
+        return
+      }
+      if (currentSteps === 2 && currentDice < settings.maxSkillDicePerSkill) {
+        setSkillStepBonuses({ ...skillStepBonuses, [skillId]: 0 })
+        setSkillBonuses({ ...skillBonuses, [skillId]: currentDice + 1 })
+        setCharacterSkills(prev => ({
+          ...prev,
+          [skillId]: {
+            ...prev[skillId],
+            bonusDice: currentDice + 1,
+          }
+        }))
+      }
+      return
+    }
+
+    if (currentSteps > 0) {
+      setSkillStepBonuses({ ...skillStepBonuses, [skillId]: currentSteps - 1 })
+      return
+    }
+    if (currentSteps === 0 && currentDice > 0) {
+      setSkillStepBonuses({ ...skillStepBonuses, [skillId]: 2 })
+      const newDice = currentDice - 1
+      setSkillBonuses({ ...skillBonuses, [skillId]: newDice })
+      setCharacterSkills(prev => ({
+        ...prev,
+        [skillId]: {
+          ...prev[skillId],
+          bonusDice: newDice,
+        }
+      }))
+    }
+  }
+
   const handleAddCustomSkill = (attribute: string, skillName: string) => {
     if (!skillName.trim()) return
 
@@ -303,6 +389,7 @@ export default function CharacterCreationExtended({
       name: skillName.trim(),
       attribute,
       bonusDice: 0,
+      bonusSteps: 0,
       specializations: [],
       isCustom: true,
     }
@@ -395,15 +482,16 @@ export default function CharacterCreationExtended({
 
   const isSkillLearned = (skillId: string): boolean => {
     const bonus = skillBonuses[skillId] || 0
+    const stepBonus = skillStepBonuses[skillId] || 0
     const skill = characterSkills[skillId]
     if (!skill) return false
-    
-    // Geschwächte Fertigkeiten benötigen mindestens 1 Punkt oder 1 Blib
+
+    // Spezialisierungen dürfen die Grund-Fertigkeit nicht erhöhen
     if (skill.isWeakened) {
-      return bonus > 0 || skill.specializations.some(spec => spec.blibs > 0)
+      return bonus > 0 || stepBonus > 0
     }
-    
-    return bonus > 0 || skill.specializations.some(spec => spec.blibs > 0)
+
+    return bonus > 0 || stepBonus > 0
   }
 
   const handleCreate = () => {
@@ -437,9 +525,11 @@ export default function CharacterCreationExtended({
       })
       .map((skill) => {
         const bonusDice = skillBonuses[skill.id] || 0
+        const bonusSteps = skillStepBonuses[skill.id] || 0
         return {
           ...skill,
           bonusDice,
+          bonusSteps,
         }
       })
 
@@ -489,6 +579,13 @@ export default function CharacterCreationExtended({
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
       <div className="container mx-auto max-w-6xl">
+        <div className="fixed top-4 right-4 z-50">
+          <div className={`px-4 py-2 rounded-lg border bg-slate-900/80 backdrop-blur-lg ${
+            remainingBlips >= 0 ? 'border-green-400 text-green-300' : 'border-red-400 text-red-300'
+          }`}>
+            Blips: {remainingBlips} // {totalBlipBudget}
+          </div>
+        </div>
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold text-white">
@@ -505,19 +602,21 @@ export default function CharacterCreationExtended({
               ))}
             </div>
           </div>
-          <div className="flex items-center justify-between text-sm text-white/70 mb-6">
-            <div className="flex items-center gap-2">
-              <span
-                className="cursor-help"
-                title="1D = 3 Schritte (+1, +2, +1D). Kosten steigen alle 3 Schritte an."
-              >
-                ℹ️
-              </span>
-              <span>Blips: {remainingBlips} / {totalBlipBudget}</span>
-            </div>
-            <span className={remainingBlips >= 0 ? 'text-green-400' : 'text-red-400'}>
-              {remainingBlips >= 0 ? 'Budget ok' : 'Budget überschritten'}
-            </span>
+          <div className="text-white/70 text-sm leading-relaxed mb-6">
+            <p>
+              Wir würfeln mit 6seitigen Würfeln (D6) gegen Schwierigkeitsgrade.
+              Je nach Begebenheit wird gegen die Attribute, gegen Fertigkeiten oder Spezialisierungen gewürfelt.
+            </p>
+            <p className="mt-2">
+              Zum Start kann jedes Attribut um bis zu {settings.maxAttributeDicePerAttribute}D,
+              jede Fertigkeit um bis zu {settings.maxSkillDicePerSkill}D und jede Spezialisierung
+              um bis zu {settings.maxBlibsPerSpecialization} Blibs gesteigert werden.
+              Die Kosten steigen konstant an.
+            </p>
+            <p className="mt-2">
+              Fertigkeiten oder Spezialisierungen können selber erstellt und auf alles angewandt werden
+              (z.B. Betrügen → Kartenspiel, Handwerk → Schmiedekunst, Fernkampf → Blasrohr).
+            </p>
           </div>
 
           {/* Schritt 1: Grundinformationen */}
@@ -679,57 +778,6 @@ export default function CharacterCreationExtended({
           {/* Schritt 3: Fertigkeiten */}
           {step === 'skills' && (
             <div className="space-y-6">
-              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-2xl font-bold text-white">
-                    Attribute (Blip-System, max {settings.maxAttributeDicePerAttribute} pro Attribut)
-                  </h2>
-                  <div className={`text-lg font-semibold ${remainingBlips >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    Verfügbare Blips: {remainingBlips} / {totalBlipBudget}
-                  </div>
-                </div>
-                <div className="grid grid-cols-[1fr_6rem_6rem_6rem] gap-4 text-xs text-white/60 mb-2 font-mono tabular-nums">
-                  <span>Attribut</span>
-                  <span>Wert</span>
-                  <span>Blips</span>
-                  <span>ΔD</span>
-                </div>
-                <div className="space-y-2">
-                  {STANDARD_ATTRIBUTES.map((attr) => {
-                    const bonus = attributeBonuses[attr] || 0
-                    const total = getAttributeValue(attr)
-                    const cost = calculateStepCost(getAttributeSteps(attr))
-                    return (
-                      <div key={attr} className="grid grid-cols-[1fr_6rem_6rem_6rem] items-center gap-4 bg-white/5 rounded p-2">
-                        <span className="text-white">{attr}</span>
-                        <span className="text-white font-mono tabular-nums">{total}</span>
-                        <span className="text-white font-mono tabular-nums">{cost}</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleAttributeBonusChange(attr, -1)}
-                            disabled={bonus === 0}
-                            className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
-                          >
-                            -
-                          </button>
-                          <span className="text-white font-mono w-8 text-center">{bonus}</span>
-                          <button
-                            onClick={() => handleAttributeBonusChange(attr, 1)}
-                            disabled={
-                              remainingBlips < getAdditionalStepCost(getAttributeSteps(attr), 3) ||
-                              bonus >= settings.maxAttributeDicePerAttribute
-                            }
-                            className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-3">
@@ -739,7 +787,6 @@ export default function CharacterCreationExtended({
                     <span className="text-white/70">▼</span>
                   </div>
                   <div className="text-sm text-white/70 space-y-0 text-right">
-                    <div>Verfügbare Blips: {remainingBlips} / {totalBlipBudget}</div>
                     <div>Max. Würfel pro Skill: {settings.maxSkillDicePerSkill}</div>
                     <div>Max. Blips je Spezialisierung: {settings.maxBlibsPerSpecialization}</div>
                   </div>
@@ -765,26 +812,77 @@ export default function CharacterCreationExtended({
 
                   if (filteredSkills.length === 0 && !showOnlyLearned) return null
 
+                  const bonus = attributeBonuses[attr] || 0
+                  const stepBonus = attributeStepBonuses[attr] || 0
+                  const attributeCost = calculateStepCost(getAttributeSteps(attr))
+
                   return (
                     <div key={attr} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                      <div className="flex items-center gap-4 mb-3">
-                        <h3 className="text-white font-semibold">
-                          {attr}
-                        </h3>
-                        <div className="w-32 text-left">
+                      <div className="grid grid-cols-[1fr_6rem_6rem_6rem] items-center gap-4 mb-3">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-white font-semibold">{attr}</h3>
                           <span className="text-white font-mono tabular-nums">{attributeValue}</span>
                         </div>
+                        <div className="flex items-center gap-2 justify-start">
+                          <button
+                            onClick={() => handleAttributeBonusChange(attr, -1)}
+                            disabled={bonus === 0}
+                            className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
+                          >
+                            -
+                          </button>
+                          <span className="text-white font-mono w-8 text-center">{bonus}</span>
+                          <button
+                            onClick={() => handleAttributeBonusChange(attr, 1)}
+                            disabled={
+                              remainingBlips < getAdditionalStepCost(getAttributeSteps(attr), 3) ||
+                              bonus >= settings.maxAttributeDicePerAttribute
+                            }
+                            className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 justify-start">
+                          <button
+                            onClick={() => handleAttributeStepChange(attr, -1)}
+                            disabled={bonus === 0 && stepBonus === 0}
+                            className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
+                          >
+                            -
+                          </button>
+                          <span className="text-white font-mono w-8 text-center">{stepBonus ? `+${stepBonus}` : '0'}</span>
+                          <button
+                            onClick={() => handleAttributeStepChange(attr, 1)}
+                            disabled={
+                              remainingBlips < getAdditionalStepCost(getAttributeSteps(attr), 1) ||
+                              (stepBonus === 2 && bonus >= settings.maxAttributeDicePerAttribute)
+                            }
+                            className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="text-left font-mono tabular-nums text-white/80">
+                          Blips {attributeCost}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-[1fr_6rem_6rem_6rem_6rem] gap-4 text-xs text-white/60 mb-2 font-mono tabular-nums">
+                        <span>Fertigkeit</span>
+                        <span>+1D</span>
+                        <span>+1</span>
+                        <span>Blips</span>
+                        <span>Wert</span>
                       </div>
 
                       <div className="space-y-2 mb-3">
                         {filteredSkills.map((skill) => {
                           const characterSkill = characterSkills[skill.id] || skill
                           const bonus = skillBonuses[skill.id] || 0
+                          const stepBonus = skillStepBonuses[skill.id] || 0
                           const learned = isSkillLearned(skill.id)
-                          const skillBlibs = characterSkill.specializations.reduce(
-                            (max, spec) => Math.max(max, spec.blibs || 0),
-                            0
-                          )
+                          const skillBlibs = skillStepBonuses[skill.id] || 0
                           const skillValue = calculateSkillValue(
                             attributeValue,
                             bonus,
@@ -794,7 +892,7 @@ export default function CharacterCreationExtended({
                           )
                           return (
                             <div key={skill.id} className="bg-white/5 rounded p-3 border border-white/10">
-                              <div className="grid grid-cols-[1fr_6rem_6rem] items-center gap-4">
+                              <div className="grid grid-cols-[1fr_6rem_6rem_6rem_6rem] items-center gap-4">
                                 <div className="flex items-center gap-3">
                                   <span className="text-white">{skill.name}</span>
                                   {skill.isWeakened && (
@@ -809,7 +907,6 @@ export default function CharacterCreationExtended({
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 justify-start">
-                                  {/* Fertigkeitspunkte */}
                                   <button
                                     onClick={() => handleSkillBonusChange(skill.id, -1)}
                                     disabled={bonus === 0}
@@ -829,6 +926,29 @@ export default function CharacterCreationExtended({
                                     +
                                   </button>
                                 </div>
+                                <div className="flex items-center gap-2 justify-start">
+                                  <button
+                                    onClick={() => handleSkillStepChange(skill.id, -1)}
+                                    disabled={bonus === 0 && stepBonus === 0}
+                                    className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="text-white font-mono w-8 text-center">{stepBonus ? `+${stepBonus}` : '0'}</span>
+                                  <button
+                                    onClick={() => handleSkillStepChange(skill.id, 1)}
+                                    disabled={
+                                      remainingBlips < getAdditionalStepCost(getSkillSteps(skill.id), 1) ||
+                                      (stepBonus === 2 && bonus >= settings.maxSkillDicePerSkill)
+                                    }
+                                    className="w-8 h-8 rounded bg-white/10 border border-white/20 text-white disabled:opacity-30"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                <div className="text-left font-mono tabular-nums text-white">
+                                  {calculateStepCost(getSkillSteps(skill.id))}
+                                </div>
                                 <div className="text-left">
                                   <span className={`font-mono tabular-nums ${bonus > 0 || characterSkill.specializations.length > 0 ? 'text-green-400' : 'text-white/50'}`}>
                                     {skillValue}
@@ -837,11 +957,7 @@ export default function CharacterCreationExtended({
                               </div>
                               <div className="mt-2 text-xs text-white/60 font-mono tabular-nums">
                                 {(() => {
-                                  const specBlibs = characterSkill.specializations.reduce(
-                                    (max, spec) => Math.max(max, spec.blibs || 0),
-                                    0
-                                  )
-                                  const specLabel = formatSpecBonus(specBlibs)
+                                  const specLabel = formatSpecBonus(skillBlibs)
                                   const skillLabel = bonus > 0 ? `+${bonus}D` : '+0'
                                   return `${attributeValue} + ${skillLabel} + ${specLabel} = ${skillValue}`
                                 })()}
@@ -852,14 +968,15 @@ export default function CharacterCreationExtended({
                                 <div className="mt-3 pt-3 border-t border-white/10 space-y-2 pl-6">
                                   {/* Vorhandene Spezialisierungen */}
                                   {characterSkill.specializations.map((spec) => {
-                                    const totalBlibs = spec.blibs
+                                    const totalBlibs = (skillStepBonuses[skill.id] || 0) + (spec.blibs || 0)
                                     const specValue = calculateSkillValue(attributeValue, bonus, totalBlibs, skill.isWeakened, learned)
 
                                     return (
-                                      <div key={spec.id} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-4 bg-white/5 rounded p-2">
+                                      <div key={spec.id} className="grid grid-cols-[1fr_6rem_6rem_6rem_6rem] items-center gap-4 bg-white/5 rounded p-2">
                                         <div className="pl-6">
                                           <span className="text-white">{spec.name}</span>
                                         </div>
+                                        <div className="text-left text-white/40 font-mono tabular-nums">—</div>
                                         <div className="flex items-center gap-2 justify-start">
                                           <button
                                             onClick={() => handleSpecializationBlibChange(skill.id, spec.id, -1)}
@@ -868,7 +985,7 @@ export default function CharacterCreationExtended({
                                           >
                                             -
                                           </button>
-                                          <span className="text-white font-mono w-8 text-center">{spec.blibs}</span>
+                                          <span className="text-white font-mono w-8 text-center">{spec.blibs ? `+${spec.blibs}` : '0'}</span>
                                           <button
                                             onClick={() => handleSpecializationBlibChange(skill.id, spec.id, 1)}
                                             disabled={
@@ -879,6 +996,9 @@ export default function CharacterCreationExtended({
                                           >
                                             +
                                           </button>
+                                        </div>
+                                        <div className="text-left font-mono tabular-nums text-white">
+                                          {calculateStepCost((spec.blibs || 0))}
                                         </div>
                                         <div className="text-left">
                                           <span className={`font-mono tabular-nums ${totalBlibs > 0 ? 'text-green-400' : 'text-white/50'}`}>
@@ -1011,6 +1131,15 @@ export default function CharacterCreationExtended({
                   >
                     {profileImageLoading ? 'Generiere...' : 'Profilbild generieren'}
                   </button>
+                  {profileImageError && (
+                    <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
+                      <div className="font-semibold mb-1">Bild nicht generiert</div>
+                      <div>{profileImageError}</div>
+                      <div className="text-white/60 mt-2">
+                        Hinweis: Wenn der API-Key fehlt, bitte `GEMINI_API_KEY` setzen und den Server neu starten.
+                      </div>
+                    </div>
+                  )}
 
                   {profileImageUrl && (
                     <div className="space-y-3">
@@ -1049,7 +1178,7 @@ export default function CharacterCreationExtended({
 
               <div className="flex gap-4">
                 <button
-                  onClick={() => setStep('attributes')}
+                  onClick={() => setStep('basics')}
                   className="px-6 bg-white/10 hover:bg-white/20 text-white font-semibold py-3 rounded-lg transition-colors"
                 >
                   Zurück
@@ -1059,7 +1188,7 @@ export default function CharacterCreationExtended({
                   disabled={!characterName.trim() || !selectedAlignment || !canFinish}
                   className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
                 >
-                  Charakter erstellen
+                  {existingCharacter ? 'Charakter speichern' : 'Charakter erstellen'}
                 </button>
               </div>
             </div>

@@ -42,6 +42,7 @@ export default function SpielerPage() {
   const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
+  const [journalIllustrationError, setJournalIllustrationError] = useState('')
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
@@ -761,14 +762,10 @@ export default function SpielerPage() {
                     {combatSkills.map((skill) => {
                       const attributeValue = selectedCharacter.attributes[skill.attribute] || '1D'
                       const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                      const skillBlibs = (skill.specializations || []).reduce(
-                        (max, spec) => Math.max(max, spec.blibs || 0),
-                        0
-                      )
                       const skillDiceFormula = calculateSkillValue(
                         attributeValue,
                         skill.bonusDice,
-                        skillBlibs,
+                        skill.bonusSteps || 0,
                         skill.isWeakened,
                         isLearned
                       )
@@ -877,14 +874,10 @@ export default function SpielerPage() {
                       <div className="space-y-2">
                         {skillsForAttribute.map((skill) => {
                           const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                          const skillBlibs = (skill.specializations || []).reduce(
-                            (max, spec) => Math.max(max, spec.blibs || 0),
-                            0
-                          )
                           const skillDiceFormula = calculateSkillValue(
                             attributeValue,
                             skill.bonusDice,
-                            skillBlibs,
+                            skill.bonusSteps || 0,
                             skill.isWeakened,
                             isLearned
                           )
@@ -1133,6 +1126,7 @@ export default function SpielerPage() {
                     <button
                       onClick={async () => {
                         setJournalIllustrationLoading(true)
+                        setJournalIllustrationError('')
                         try {
                           const response = await fetch('/api/generate-image', {
                             method: 'POST',
@@ -1146,14 +1140,14 @@ export default function SpielerPage() {
                             }),
                           })
                           const json = await response.json()
-                          if (json?.imageUrl) {
+                          if (response.ok && json?.imageUrl) {
                             setJournalIllustrationUrl(json.imageUrl)
                             setJournalIllustrationSaved(false)
                           } else {
-                            alert('Illustration konnte nicht generiert werden.')
+                            setJournalIllustrationError(json?.error || 'Illustration konnte nicht generiert werden.')
                           }
                         } catch (error) {
-                          alert('Illustration konnte nicht generiert werden.')
+                          setJournalIllustrationError('Illustration konnte nicht generiert werden. Prüfe Internetverbindung und API-Key.')
                         } finally {
                           setJournalIllustrationLoading(false)
                         }
@@ -1163,6 +1157,15 @@ export default function SpielerPage() {
                     >
                       {journalIllustrationLoading ? 'Generiere...' : 'Illustration generieren'}
                     </button>
+                    {journalIllustrationError && (
+                      <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
+                        <div className="font-semibold mb-1">Illustration nicht generiert</div>
+                        <div>{journalIllustrationError}</div>
+                        <div className="text-white/60 mt-2">
+                          Hinweis: Wenn der API-Key fehlt, bitte `GEMINI_API_KEY` setzen und den Server neu starten.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

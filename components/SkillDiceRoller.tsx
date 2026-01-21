@@ -28,8 +28,8 @@ export default function SkillDiceRoller({
   const attributeValue = character.attributes[skill.attribute] || '1D'
   const isLearned = skill.bonusDice > 0 || (specialization && specialization.blibs > 0)
   const skillBlibs = specialization
-    ? specialization.blibs
-    : (skill.specializations || []).reduce((max, spec) => Math.max(max, spec.blibs || 0), 0)
+    ? (skill.bonusSteps || 0) + specialization.blibs
+    : (skill.bonusSteps || 0)
   const skillDiceFormula = calculateSkillValue(
     attributeValue,
     skill.bonusDice,

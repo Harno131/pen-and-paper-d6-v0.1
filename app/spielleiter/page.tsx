@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary } from '@/types'
 import {
@@ -28,7 +28,7 @@ import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
 import { formatD6Value } from '@/lib/dice'
-import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getMonthInfo, getWeekdayInfo, TIMES_OF_DAY } from '@/lib/fantasy-calendar'
+import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getMonthInfo, getWeekdayInfo, TIMES_OF_DAY, MONTHS, createFantasyDate, type FantasyDate } from '@/lib/fantasy-calendar'
 import { getAlignment } from '@/lib/alignments'
 import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
 import NameGenerator from '@/components/NameGenerator'
@@ -56,12 +56,16 @@ export default function SpielleiterPage() {
   const [diceRolls, setDiceRolls] = useState<DiceRoll[]>([])
   const [newJournalEntry, setNewJournalEntry] = useState({ title: '', content: '' })
   const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<string>('Mittag')
+  const [journalTimeJump, setJournalTimeJump] = useState<'immediately' | 'next_time' | 'jump_evening' | 'jump_next_morning' | 'custom'>('next_time')
+  const [customJumpDate, setCustomJumpDate] = useState<{ year: number; month: number; day: number } | null>(null)
+  const [customJumpTime, setCustomJumpTime] = useState<string>(TIMES_OF_DAY[0])
   const [selectedAuthor, setSelectedAuthor] = useState<string>('')
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
   const [newImage, setNewImage] = useState({ title: '', description: '', url: '' })
   const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
+  const [journalIllustrationError, setJournalIllustrationError] = useState('')
   const [rewardGroupBlips, setRewardGroupBlips] = useState('')
   const [rewardSingleBlips, setRewardSingleBlips] = useState('')
   const [rewardCharacterId, setRewardCharacterId] = useState('')
@@ -85,6 +89,7 @@ export default function SpielleiterPage() {
   const [monsterImageUrl, setMonsterImageUrl] = useState<string | null>(null)
   const [monsterImageSaved, setMonsterImageSaved] = useState(false)
   const [monsterImageLoading, setMonsterImageLoading] = useState(false)
+  const [monsterImageError, setMonsterImageError] = useState('')
   const [monsterFallcrestFilter, setMonsterFallcrestFilter] = useState(true)
   const [bestiaryTagFilter, setBestiaryTagFilter] = useState('')
   const [expandedMonsterId, setExpandedMonsterId] = useState<string | null>(null)
@@ -96,6 +101,7 @@ export default function SpielleiterPage() {
   const [hiddenCharacters, setHiddenCharacters] = useState<Set<string>>(new Set())
   const [groupMembers, setGroupMembers] = useState<any[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const journalBottomRef = useRef<HTMLDivElement>(null)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
@@ -103,7 +109,7 @@ export default function SpielleiterPage() {
   const [journalTagFilter, setJournalTagFilter] = useState('')
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
-  const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('asc')
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
     if (!filter) return true
@@ -121,6 +127,146 @@ export default function SpielleiterPage() {
     ? newJournalEntry.content.trim().split(/\s+/).length
     : 0
   const canGenerateJournalIllustration = journalWordCount >= 50 && !journalIllustrationUrl
+
+  const resolveRealStartDate = fantasyCalendarStart?.realStartDate
+    ? new Date(fantasyCalendarStart.realStartDate)
+    : undefined
+
+  const getEntryFantasyDate = (entry: JournalEntry): FantasyDate | null => {
+    if (entry.fantasyDate) return entry.fantasyDate
+    if (!entry.timestamp) return null
+    return realDateToFantasyDate(entry.timestamp, fantasyCalendarStart?.startDate, resolveRealStartDate)
+  }
+
+  const lastJournalEntry = useMemo(() => {
+    if (journalEntries.length === 0) return null
+    return journalEntries.reduce((latest, entry) =>
+      entry.timestamp.getTime() > latest.timestamp.getTime() ? entry : latest
+    )
+  }, [journalEntries])
+
+  const lastEntryFantasyDate = useMemo(
+    () => (lastJournalEntry ? getEntryFantasyDate(lastJournalEntry) : null),
+    [lastJournalEntry, fantasyCalendarStart, resolveRealStartDate]
+  )
+
+  const normalizeTimeOfDay = (time?: string): string => {
+    if (time && TIMES_OF_DAY.includes(time as any)) return time
+    return 'Mittag'
+  }
+
+  const lastEntryTimeOfDay = normalizeTimeOfDay(lastJournalEntry?.timeOfDay)
+
+  const baseFantasyDate = useMemo(() => {
+    if (lastEntryFantasyDate) return lastEntryFantasyDate
+    return realDateToFantasyDate(new Date(), fantasyCalendarStart?.startDate, resolveRealStartDate)
+  }, [lastEntryFantasyDate, fantasyCalendarStart, resolveRealStartDate])
+
+  const addFantasyDays = (date: FantasyDate, days: number): FantasyDate => {
+    let { year, month, day } = date
+    let remaining = days
+    while (remaining > 0) {
+      day += 1
+      if (day > 30) {
+        day = 1
+        month += 1
+        if (month > 12) {
+          month = 1
+          year += 1
+        }
+      }
+      remaining -= 1
+    }
+    while (remaining < 0) {
+      day -= 1
+      if (day < 1) {
+        day = 30
+        month -= 1
+        if (month < 1) {
+          month = 12
+          year = Math.max(1, year - 1)
+        }
+      }
+      remaining += 1
+    }
+    return createFantasyDate(year, month, day)
+  }
+
+  const resolveNextJournalDate = (): { fantasyDate: FantasyDate; timeOfDay: string } => {
+    const timeOrder = TIMES_OF_DAY
+    const baseTimeIndex = timeOrder.indexOf(lastEntryTimeOfDay as any)
+    const eveningTime = timeOrder.includes('Untergang' as any) ? 'Untergang' : timeOrder[timeOrder.length - 2]
+    const morningTime = timeOrder.includes('Früh' as any) ? 'Früh' : timeOrder[0]
+
+    if (journalTimeJump === 'immediately') {
+      return { fantasyDate: baseFantasyDate, timeOfDay: lastEntryTimeOfDay }
+    }
+
+    if (journalTimeJump === 'next_time') {
+      if (baseTimeIndex >= 0 && baseTimeIndex < timeOrder.length - 1) {
+        return { fantasyDate: baseFantasyDate, timeOfDay: timeOrder[baseTimeIndex + 1] }
+      }
+      return { fantasyDate: addFantasyDays(baseFantasyDate, 1), timeOfDay: timeOrder[0] }
+    }
+
+    if (journalTimeJump === 'jump_evening') {
+      const eveningIndex = timeOrder.indexOf(eveningTime as any)
+      const shouldAdvance = baseTimeIndex >= 0 && eveningIndex >= 0 && baseTimeIndex >= eveningIndex
+      return {
+        fantasyDate: shouldAdvance ? addFantasyDays(baseFantasyDate, 1) : baseFantasyDate,
+        timeOfDay: eveningTime,
+      }
+    }
+
+    if (journalTimeJump === 'jump_next_morning') {
+      return { fantasyDate: addFantasyDays(baseFantasyDate, 1), timeOfDay: morningTime }
+    }
+
+    if (customJumpDate) {
+      return {
+        fantasyDate: createFantasyDate(customJumpDate.year, customJumpDate.month, customJumpDate.day),
+        timeOfDay: customJumpTime,
+      }
+    }
+
+    return { fantasyDate: baseFantasyDate, timeOfDay: lastEntryTimeOfDay }
+  }
+
+  const previewJournalDate = resolveNextJournalDate()
+  const lastEntryLabel = lastEntryFantasyDate
+    ? formatFantasyDate(lastEntryFantasyDate, true, lastEntryTimeOfDay)
+    : 'Noch kein Eintrag'
+  const previewEntryLabel = formatFantasyDate(previewJournalDate.fantasyDate, true, previewJournalDate.timeOfDay)
+
+  const updateCustomJumpDate = (updates: Partial<{ year: number; month: number; day: number }>) => {
+    setCustomJumpDate((prev) => {
+      const fallback = prev || {
+        year: baseFantasyDate.year,
+        month: baseFantasyDate.month,
+        day: baseFantasyDate.day,
+      }
+      return { ...fallback, ...updates }
+    })
+  }
+
+  useEffect(() => {
+    if (journalTimeJump !== 'custom') return
+    if (!customJumpDate) {
+      const nextDay = addFantasyDays(baseFantasyDate, 1)
+      setCustomJumpDate({ year: nextDay.year, month: nextDay.month, day: nextDay.day })
+    }
+    if (!customJumpTime) {
+      setCustomJumpTime(TIMES_OF_DAY[0])
+    }
+  }, [journalTimeJump, customJumpDate, customJumpTime, baseFantasyDate])
+
+  useEffect(() => {
+    if (journalTimeJump === 'custom') {
+      setSelectedTimeOfDay(customJumpTime)
+    } else {
+      setSelectedTimeOfDay(previewJournalDate.timeOfDay)
+    }
+  }, [journalTimeJump, previewJournalDate.timeOfDay, customJumpTime])
 
   useEffect(() => {
     if (editingEntry?.illustrationUrl) {
@@ -208,10 +354,12 @@ export default function SpielleiterPage() {
   }, [groupId, loadData])
 
   useEffect(() => {
-    if (activeTab === 'journal' && typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (activeTab === 'journal') {
+      setTimeout(() => {
+        journalBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 0)
     }
-  }, [activeTab])
+  }, [activeTab, journalEntries.length])
 
   const applyBlipRewards = (updater: (char: Character) => Character) => {
     const updated = characters.map((char) => {
@@ -252,6 +400,7 @@ export default function SpielleiterPage() {
 
   const handleGenerateMonsterImage = async () => {
     setMonsterImageLoading(true)
+    setMonsterImageError('')
     try {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
@@ -267,14 +416,14 @@ export default function SpielleiterPage() {
         }),
       })
       const json = await response.json()
-      if (json?.imageUrl) {
+      if (response.ok && json?.imageUrl) {
         setMonsterImageUrl(json.imageUrl)
         setMonsterImageSaved(false)
       } else {
-        alert('Bild konnte nicht generiert werden.')
+        setMonsterImageError(json?.error || 'Bild konnte nicht generiert werden.')
       }
     } catch (error) {
-      alert('Bildgenerierung fehlgeschlagen.')
+      setMonsterImageError('Bildgenerierung fehlgeschlagen. Prüfe Internetverbindung und API-Key.')
     } finally {
       setMonsterImageLoading(false)
     }
@@ -364,19 +513,9 @@ export default function SpielleiterPage() {
     if (!newJournalEntry.content.trim()) return
 
     const now = new Date()
-    
-    // Lade Start-Datum aus Settings
-    let fantasyDate
-    if (groupId) {
-      const groupSettings = await getGroupSettings(groupId)
-      const startDate = groupSettings?.fantasyCalendar?.startDate
-      const realStartDate = groupSettings?.fantasyCalendar?.realStartDate 
-        ? new Date(groupSettings.fantasyCalendar.realStartDate)
-        : undefined
-      fantasyDate = realDateToFantasyDate(now, startDate, realStartDate)
-    } else {
-      fantasyDate = realDateToFantasyDate(now)
-    }
+    const resolvedJournalDate = previewJournalDate
+    const fantasyDate = editingEntry?.fantasyDate || resolvedJournalDate.fantasyDate
+    const timeOfDay = editingEntry?.timeOfDay || resolvedJournalDate.timeOfDay
 
     // Bestimme Autor
     let author = 'Spielleiter'
@@ -417,7 +556,7 @@ export default function SpielleiterPage() {
       imageUrl: journalIllustrationSaved ? journalIllustrationUrl || undefined : undefined,
       timestamp: editingEntry?.timestamp || now,
       fantasyDate,
-      timeOfDay: selectedTimeOfDay as any,
+      timeOfDay: timeOfDay as any,
     }
 
     if (editingEntry) {
@@ -702,14 +841,10 @@ export default function SpielleiterPage() {
                   if (dodgeSkill) {
                     const attributeValue = char.attributes[dodgeSkill.attribute] || '1D'
                     const isLearned = dodgeSkill.bonusDice > 0 || (dodgeSkill.specializations && dodgeSkill.specializations.some(s => s.blibs > 0))
-                    const skillBlibs = (dodgeSkill.specializations || []).reduce(
-                      (max, spec) => Math.max(max, spec.blibs || 0),
-                      0
-                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       dodgeSkill.bonusDice,
-                      skillBlibs,
+                      dodgeSkill.bonusSteps || 0,
                       dodgeSkill.isWeakened,
                       isLearned
                     )
@@ -727,14 +862,10 @@ export default function SpielleiterPage() {
                   if (meleeSkill) {
                     const attributeValue = char.attributes[meleeSkill.attribute] || '1D'
                     const isLearned = meleeSkill.bonusDice > 0 || (meleeSkill.specializations && meleeSkill.specializations.some(s => s.blibs > 0))
-                    const skillBlibs = (meleeSkill.specializations || []).reduce(
-                      (max, spec) => Math.max(max, spec.blibs || 0),
-                      0
-                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       meleeSkill.bonusDice,
-                      skillBlibs,
+                      meleeSkill.bonusSteps || 0,
                       meleeSkill.isWeakened,
                       isLearned
                     )
@@ -751,14 +882,10 @@ export default function SpielleiterPage() {
                   if (rangedSkill) {
                     const attributeValue = char.attributes[rangedSkill.attribute] || '1D'
                     const isLearned = rangedSkill.bonusDice > 0 || (rangedSkill.specializations && rangedSkill.specializations.some(s => s.blibs > 0))
-                    const skillBlibs = (rangedSkill.specializations || []).reduce(
-                      (max, spec) => Math.max(max, spec.blibs || 0),
-                      0
-                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       rangedSkill.bonusDice,
-                      skillBlibs,
+                      rangedSkill.bonusSteps || 0,
                       rangedSkill.isWeakened,
                       isLearned
                     )
@@ -1414,14 +1541,10 @@ export default function SpielleiterPage() {
                     // Hauptfertigkeit
                     const attributeValue = character.attributes[attribute] || '1D'
                     const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some((s: any) => s.blibs > 0))
-                    const skillBlibs = (skill.specializations || []).reduce(
-                      (max, spec) => Math.max(max, spec.blibs || 0),
-                      0
-                    )
                     const skillDiceFormula = calculateSkillValue(
                       attributeValue,
                       skill.bonusDice,
-                      skillBlibs,
+                      skill.bonusSteps || 0,
                       skill.isWeakened,
                       isLearned
                     )
@@ -1442,7 +1565,7 @@ export default function SpielleiterPage() {
                         const specDiceFormula = calculateSkillValue(
                           attributeValue,
                           skill.bonusDice,
-                          specBlibs,
+                          (skill.bonusSteps || 0) + specBlibs,
                           skill.isWeakened,
                           isLearned
                         )
@@ -1623,178 +1746,6 @@ export default function SpielleiterPage() {
         {/* Journal Tab */}
         {activeTab === 'journal' && (
           <div className="space-y-6">
-            {/* Neue Eintrag hinzufügen */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <h2 className="text-2xl font-bold text-white mb-4">
-                {editingEntry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
-              </h2>
-              <div className="space-y-4">
-                {/* Autor-Auswahl */}
-                <div className="flex items-center gap-3">
-                  <label className="text-white/90 w-24">Autor:</label>
-                  <select
-                    value={selectedAuthor}
-                    onChange={(e) => setSelectedAuthor(e.target.value)}
-                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  >
-                    <option value="" className="bg-slate-800">-- Auswählen --</option>
-                    <optgroup label="Spieler-Charaktere" className="bg-slate-800">
-                      {characters.filter(c => !c.isNPC && !c.deletedDate).map(char => (
-                        <option key={char.id} value={char.id} className="bg-slate-800">
-                          {char.name} ({char.playerName})
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="NPCs" className="bg-slate-800">
-                      {characters.filter(c => c.isNPC && !c.deletedDate).map(char => (
-                        <option key={char.id} value={char.id} className="bg-slate-800">
-                          {char.name} {char.npcType ? `(${char.npcType})` : ''}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Spielleiter" className="bg-slate-800">
-                      <option value="spielleiter" className="bg-slate-800">
-                        Spielleiter
-                      </option>
-                    </optgroup>
-                  </select>
-                </div>
-                
-                {/* Tageszeit */}
-                <div className="flex items-center gap-3">
-                  <label className="text-white/90 w-24">Tageszeit:</label>
-                  <select
-                    value={selectedTimeOfDay}
-                    onChange={(e) => setSelectedTimeOfDay(e.target.value)}
-                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  >
-                    {TIMES_OF_DAY.map(time => (
-                      <option key={time} value={time} className="bg-slate-800">
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                {/* Text-Eingabe (Titel: Inhalt Format) */}
-                <textarea
-                  placeholder="Titel: Inhalt... (z.B. 'Begegnung: Wir trafen einen Händler auf dem Markt')"
-                  value={newJournalEntry.content}
-                  onChange={(e) =>
-                    setNewJournalEntry({ ...newJournalEntry, content: e.target.value })
-                  }
-                  rows={4}
-                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
-
-                {journalWordCount >= 50 && (
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2 text-white/80 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={journalFallcrestFilter}
-                        onChange={(e) => setJournalFallcrestFilter(e.target.checked)}
-                        className="rounded"
-                      />
-                      Fallcrest-Artefakt-Nässe aktivieren
-                    </label>
-                    <button
-                      onClick={async () => {
-                        setJournalIllustrationLoading(true)
-                        try {
-                          const response = await fetch('/api/generate-image', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              type: 'event',
-                              data: {
-                                text: newJournalEntry.content,
-                              },
-                              fallcrestFilter: journalFallcrestFilter,
-                            }),
-                          })
-                          const json = await response.json()
-                          if (json?.imageUrl) {
-                            setJournalIllustrationUrl(json.imageUrl)
-                            setJournalIllustrationSaved(false)
-                          } else {
-                            alert('Illustration konnte nicht generiert werden.')
-                          }
-                        } catch (error) {
-                          alert('Illustration konnte nicht generiert werden.')
-                        } finally {
-                          setJournalIllustrationLoading(false)
-                        }
-                      }}
-                      disabled={!canGenerateJournalIllustration || journalIllustrationLoading}
-                      className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
-                    >
-                      {journalIllustrationLoading ? 'Generiere...' : 'Illustration generieren'}
-                    </button>
-                  </div>
-                )}
-
-                {journalIllustrationUrl && (
-                  <div className="space-y-3">
-                    <div className="bg-white/5 p-3 rounded-lg border border-white/10">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={journalIllustrationUrl}
-                        alt="Generierte Illustration"
-                        className="w-full rounded-lg border border-white/10"
-                      />
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <button
-                        onClick={() => {
-                          setJournalIllustrationUrl(null)
-                          setJournalIllustrationSaved(false)
-                        }}
-                        className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
-                      >
-                        Verwerfen / Neuer Versuch
-                      </button>
-                      <button
-                        onClick={() => setJournalIllustrationSaved(true)}
-                        className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
-                      >
-                        Speichern
-                      </button>
-                    </div>
-                    {journalIllustrationSaved && (
-                      <div className="text-green-400 text-sm">
-                        Illustration wird beim Speichern des Eintrags übernommen.
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleAddJournalEntry}
-                    className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
-                  >
-                    {editingEntry ? 'Speichern' : 'Eintrag hinzufügen'}
-                  </button>
-                  {editingEntry && (
-                    <button
-                      onClick={() => {
-                        setEditingEntry(null)
-                        setNewJournalEntry({ title: '', content: '' })
-                        setSelectedAuthor('')
-                        setSelectedTimeOfDay('Mittag')
-                        setJournalIllustrationUrl(null)
-                        setJournalIllustrationSaved(false)
-                      }}
-                      className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
-                    >
-                      Abbrechen
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {/* Blip-Belohnungen */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h2 className="text-2xl font-bold text-white mb-4">Blip-Belohnungen</h2>
@@ -2033,7 +1984,7 @@ export default function SpielleiterPage() {
                                 setSelectedAuthor(entry.author === 'Spielleiter' ? 'spielleiter' : '')
                               }
                               // Scrolle zum Formular
-                              window.scrollTo({ top: 0, behavior: 'smooth' })
+                              journalBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
                             }}
                             className="px-3 py-1 bg-blue-600/50 hover:bg-blue-700/70 text-white rounded text-sm transition-colors"
                           >
@@ -2059,6 +2010,244 @@ export default function SpielleiterPage() {
                   )
                 })}
             </div>
+
+            {/* Neuer Eintrag hinzufügen */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h2 className="text-2xl font-bold text-white mb-4">
+                {editingEntry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
+              </h2>
+              <div className="space-y-4">
+                {/* Autor-Auswahl */}
+                <div className="flex items-center gap-3">
+                  <label className="text-white/90 w-24">Autor:</label>
+                  <select
+                    value={selectedAuthor}
+                    onChange={(e) => setSelectedAuthor(e.target.value)}
+                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  >
+                    <option value="" className="bg-slate-800">-- Auswählen --</option>
+                    <optgroup label="Spieler-Charaktere" className="bg-slate-800">
+                      {characters.filter(c => !c.isNPC && !c.deletedDate).map(char => (
+                        <option key={char.id} value={char.id} className="bg-slate-800">
+                          {char.name} ({char.playerName})
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="NPCs" className="bg-slate-800">
+                      {characters.filter(c => c.isNPC && !c.deletedDate).map(char => (
+                        <option key={char.id} value={char.id} className="bg-slate-800">
+                          {char.name} {char.npcType ? `(${char.npcType})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Spielleiter" className="bg-slate-800">
+                      <option value="spielleiter" className="bg-slate-800">
+                        Spielleiter
+                      </option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Abenteuer-Datum Fortschritt */}
+                <div className="space-y-2">
+                  <div className="text-white/70 text-sm">
+                    Letzter Eintrag: <span className="text-white">{lastEntryLabel}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-white/90 w-32">Datum-Fortschritt:</label>
+                    <select
+                      value={journalTimeJump}
+                      onChange={(e) => setJournalTimeJump(e.target.value as any)}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      <option value="immediately" className="bg-slate-800">unmittelbar</option>
+                      <option value="next_time" className="bg-slate-800">nächste Tageszeit</option>
+                      <option value="jump_evening" className="bg-slate-800">Sprung zum Abend</option>
+                      <option value="jump_next_morning" className="bg-slate-800">Sprung zur nächsten Früh</option>
+                      <option value="custom" className="bg-slate-800">x Tage später</option>
+                    </select>
+                  </div>
+                  {journalTimeJump === 'custom' && (
+                    <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <input
+                          type="number"
+                          min="1"
+                          value={customJumpDate?.year ?? baseFantasyDate.year}
+                          onChange={(e) => updateCustomJumpDate({ year: Number(e.target.value) })}
+                          className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                          placeholder="Jahr"
+                        />
+                        <select
+                          value={customJumpDate?.month ?? baseFantasyDate.month}
+                          onChange={(e) => updateCustomJumpDate({ month: Number(e.target.value) })}
+                          className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                        >
+                          {MONTHS.map((month) => (
+                            <option key={month.number} value={month.number} className="bg-slate-800">
+                              {month.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={customJumpDate?.day ?? baseFantasyDate.day}
+                          onChange={(e) => updateCustomJumpDate({ day: Number(e.target.value) })}
+                          className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                        >
+                          {Array.from({ length: 30 }, (_, idx) => idx + 1).map((day) => (
+                            <option key={day} value={day} className="bg-slate-800">
+                              {day}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={customJumpTime}
+                          onChange={(e) => setCustomJumpTime(e.target.value)}
+                          className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                        >
+                          {TIMES_OF_DAY.map(time => (
+                            <option key={time} value={time} className="bg-slate-800">
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-white/70 text-sm">
+                    Neuer Eintrag: <span className="text-white">{previewEntryLabel}</span>
+                  </div>
+                </div>
+
+                {/* Text-Eingabe (Titel: Inhalt Format) */}
+                <textarea
+                  placeholder="Titel: Inhalt... (z.B. 'Begegnung: Wir trafen einen Händler auf dem Markt')"
+                  value={newJournalEntry.content}
+                  onChange={(e) =>
+                    setNewJournalEntry({ ...newJournalEntry, content: e.target.value })
+                  }
+                  rows={4}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+
+                {journalWordCount >= 50 && (
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-2 text-white/80 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={journalFallcrestFilter}
+                        onChange={(e) => setJournalFallcrestFilter(e.target.checked)}
+                        className="rounded"
+                      />
+                      Fallcrest-Artefakt-Nässe aktivieren
+                    </label>
+                    <button
+                      onClick={async () => {
+                        setJournalIllustrationLoading(true)
+                        setJournalIllustrationError('')
+                        try {
+                          const response = await fetch('/api/generate-image', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              type: 'event',
+                              data: {
+                                text: newJournalEntry.content,
+                              },
+                              fallcrestFilter: journalFallcrestFilter,
+                            }),
+                          })
+                          const json = await response.json()
+                          if (response.ok && json?.imageUrl) {
+                            setJournalIllustrationUrl(json.imageUrl)
+                            setJournalIllustrationSaved(false)
+                          } else {
+                            setJournalIllustrationError(json?.error || 'Illustration konnte nicht generiert werden.')
+                          }
+                        } catch (error) {
+                          setJournalIllustrationError('Illustration konnte nicht generiert werden. Prüfe Internetverbindung und API-Key.')
+                        } finally {
+                          setJournalIllustrationLoading(false)
+                        }
+                      }}
+                      disabled={!canGenerateJournalIllustration || journalIllustrationLoading}
+                      className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                    >
+                      {journalIllustrationLoading ? 'Generiere...' : 'Illustration generieren'}
+                    </button>
+                    {journalIllustrationError && (
+                      <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
+                        <div className="font-semibold mb-1">Illustration nicht generiert</div>
+                        <div>{journalIllustrationError}</div>
+                        <div className="text-white/60 mt-2">
+                          Hinweis: Wenn der API-Key fehlt, bitte `GEMINI_API_KEY` setzen und den Server neu starten.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {journalIllustrationUrl && (
+                  <div className="space-y-3">
+                    <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={journalIllustrationUrl}
+                        alt="Generierte Illustration"
+                        className="w-full rounded-lg border border-white/10"
+                      />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => {
+                          setJournalIllustrationUrl(null)
+                          setJournalIllustrationSaved(false)
+                        }}
+                        className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-white/10"
+                      >
+                        Verwerfen / Neuer Versuch
+                      </button>
+                      <button
+                        onClick={() => setJournalIllustrationSaved(true)}
+                        className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-green-500/30"
+                      >
+                        Speichern
+                      </button>
+                    </div>
+                    {journalIllustrationSaved && (
+                      <div className="text-green-400 text-sm">
+                        Illustration wird beim Speichern des Eintrags übernommen.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleAddJournalEntry}
+                    className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                  >
+                    {editingEntry ? 'Speichern' : 'Eintrag hinzufügen'}
+                  </button>
+                  {editingEntry && (
+                    <button
+                      onClick={() => {
+                        setEditingEntry(null)
+                        setNewJournalEntry({ title: '', content: '' })
+                        setSelectedAuthor('')
+                        setSelectedTimeOfDay('Mittag')
+                        setJournalIllustrationUrl(null)
+                        setJournalIllustrationSaved(false)
+                      }}
+                      className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div ref={journalBottomRef} />
           </div>
         )}
 
@@ -2613,6 +2802,15 @@ export default function SpielleiterPage() {
                   >
                     {monsterImageLoading ? 'Generiere...' : 'Monster-Bild generieren'}
                   </button>
+                  {monsterImageError && (
+                    <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
+                      <div className="font-semibold mb-1">Bild nicht generiert</div>
+                      <div>{monsterImageError}</div>
+                      <div className="text-white/60 mt-2">
+                        Hinweis: Wenn der API-Key fehlt, bitte `GEMINI_API_KEY` setzen und den Server neu starten.
+                      </div>
+                    </div>
+                  )}
 
                   {monsterImageUrl && (
                     <div className="space-y-3">
