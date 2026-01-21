@@ -128,15 +128,17 @@ export default function SpielleiterPage() {
     : 0
   const canGenerateJournalIllustration = journalWordCount >= 50 && !journalIllustrationUrl
 
-  const resolveRealStartDate = fantasyCalendarStart?.realStartDate
-    ? new Date(fantasyCalendarStart.realStartDate)
-    : undefined
+  const resolveRealStartDate = useMemo(() => {
+    return fantasyCalendarStart?.realStartDate
+      ? new Date(fantasyCalendarStart.realStartDate)
+      : undefined
+  }, [fantasyCalendarStart?.realStartDate])
 
-  const getEntryFantasyDate = (entry: JournalEntry): FantasyDate | null => {
+  const getEntryFantasyDate = useCallback((entry: JournalEntry): FantasyDate | null => {
     if (entry.fantasyDate) return entry.fantasyDate
     if (!entry.timestamp) return null
     return realDateToFantasyDate(entry.timestamp, fantasyCalendarStart?.startDate, resolveRealStartDate)
-  }
+  }, [fantasyCalendarStart?.startDate, resolveRealStartDate])
 
   const lastJournalEntry = useMemo(() => {
     if (journalEntries.length === 0) return null
@@ -147,7 +149,7 @@ export default function SpielleiterPage() {
 
   const lastEntryFantasyDate = useMemo(
     () => (lastJournalEntry ? getEntryFantasyDate(lastJournalEntry) : null),
-    [lastJournalEntry, fantasyCalendarStart, resolveRealStartDate]
+    [lastJournalEntry, getEntryFantasyDate]
   )
 
   const normalizeTimeOfDay = (time?: string): string => {
