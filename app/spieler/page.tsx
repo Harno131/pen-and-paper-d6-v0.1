@@ -26,6 +26,12 @@ import SkillDiceRoller from '@/components/SkillDiceRoller'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 
 export default function SpielerPage() {
+  const parseSkillName = (name: string) => {
+    const trimmed = name.trim()
+    const match = trimmed.match(/^\s*(\d+)[\).\s-]+(.+)$/)
+    if (!match) return trimmed
+    return match[2].trim()
+  }
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'characters' | 'character' | 'skills' | 'equipment' | 'journal' | 'images'>('characters')
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
@@ -749,11 +755,14 @@ export default function SpielerPage() {
 
             {/* Passende Kampffertigkeiten */}
             {(() => {
-              const combatSkills = selectedCharacter.skills.filter(skill => 
-                skill.name === 'unbewaffneter Kampf' ||
-                skill.name === 'bewaffneter Nahkampf' ||
-                skill.name === 'Fernkampf'
-              )
+              const combatSkills = selectedCharacter.skills.filter(skill => {
+                const normalized = parseSkillName(skill.name)
+                return (
+                  normalized === 'unbewaffneter Kampf' ||
+                  normalized === 'bewaffneter Nahkampf' ||
+                  normalized === 'Fernkampf'
+                )
+              })
               if (combatSkills.length === 0) return null
               return (
                 <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
@@ -774,7 +783,7 @@ export default function SpielerPage() {
                           key={skill.id}
                           className="bg-white/5 rounded-lg p-4 border border-white/10"
                         >
-                          <h3 className="font-semibold text-white">{skill.name}</h3>
+                          <h3 className="font-semibold text-white">{parseSkillName(skill.name)}</h3>
                           <p className="text-white/70 text-sm mt-1">
                             Attribut: {skill.attribute} ({formatD6Value(attributeValue)})
                           </p>
@@ -892,7 +901,7 @@ export default function SpielerPage() {
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <div className="font-semibold text-white text-lg">
-                                      {skill.name}
+                                      {parseSkillName(skill.name)}
                                     </div>
                                     <div className="text-white/70 text-sm mt-1">
                                       {formatD6Value(skillDiceFormula)}

@@ -237,6 +237,17 @@ export default function CharacterCreationExtended({
       .slice(0, 2)
   }
 
+  const parseSkillName = (name: string) => {
+    const trimmed = name.trim()
+    const match = trimmed.match(/^\s*(\d+)[\).\s-]+(.+)$/)
+    if (!match) {
+      return { sortOrder: null as number | null, displayName: trimmed }
+    }
+    return { sortOrder: Number(match[1]), displayName: match[2].trim() }
+  }
+
+  const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
+
   const generatePlaceholderProfileImage = async () => {
     const topAttributes = getTopAttributes()
       .map((attr) => `${attr.name} ${attr.value}`)
@@ -477,7 +488,21 @@ export default function CharacterCreationExtended({
   }
 
   const getSkillsForAttribute = (attribute: string): Skill[] => {
-    return availableSkills.filter(s => s.attribute === attribute)
+    return availableSkills
+      .filter(s => s.attribute === attribute)
+      .sort((a, b) => {
+        const aParsed = parseSkillName(a.name)
+        const bParsed = parseSkillName(b.name)
+        if (aParsed.sortOrder !== null && bParsed.sortOrder !== null) {
+          if (aParsed.sortOrder !== bParsed.sortOrder) {
+            return aParsed.sortOrder - bParsed.sortOrder
+          }
+          return aParsed.displayName.localeCompare(bParsed.displayName, 'de')
+        }
+        if (aParsed.sortOrder !== null) return -1
+        if (bParsed.sortOrder !== null) return 1
+        return aParsed.displayName.localeCompare(bParsed.displayName, 'de')
+      })
   }
 
   const isSkillLearned = (skillId: string): boolean => {
@@ -894,15 +919,10 @@ export default function CharacterCreationExtended({
                             <div key={skill.id} className="bg-white/5 rounded p-3 border border-white/10">
                               <div className="grid grid-cols-[1fr_6rem_6rem_6rem_6rem] items-center gap-4">
                                 <div className="flex items-center gap-3">
-                                  <span className="text-white">{skill.name}</span>
+                                  <span className="text-white">{getSkillDisplayName(skill.name)}</span>
                                   {skill.isWeakened && (
                                     <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded">
                                       Geschwächt
-                                    </span>
-                                  )}
-                                  {skill.isCustom && (
-                                    <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                      Eigen
                                     </span>
                                   )}
                                 </div>
@@ -1052,7 +1072,7 @@ export default function CharacterCreationExtended({
                             <option value="" className="bg-slate-800">Fertigkeit wählen...</option>
                             {attrSkills.map(s => (
                               <option key={s.id} value={s.id} className="bg-slate-800">
-                                {s.name}
+                                {getSkillDisplayName(s.name)}
                               </option>
                             ))}
                           </select>

@@ -24,6 +24,13 @@ export default function SkillDiceRoller({
   const [targetValue, setTargetValue] = useState<number | ''>('')
   const [showResult, setShowResult] = useState(false)
 
+  const getDisplaySkillName = (name: string) => {
+    const trimmed = name.trim()
+    const match = trimmed.match(/^\s*(\d+)[\).\s-]+(.+)$/)
+    if (!match) return trimmed
+    return match[2].trim()
+  }
+
   // Berechne den finalen D6-Wert der Fertigkeit
   const attributeValue = character.attributes[skill.attribute] || '1D'
   const isLearned = skill.bonusDice > 0 || (specialization && specialization.blibs > 0)
@@ -110,7 +117,7 @@ export default function SkillDiceRoller({
               </div>
               <div>
                 <div className="text-white/70 text-lg mb-1">Fertigkeit</div>
-                <div className="text-3xl font-bold text-white">{skill.name}</div>
+                <div className="text-3xl font-bold text-white">{getDisplaySkillName(skill.name)}</div>
                 {specialization && (
                   <div className="text-white/60 text-xl mt-1">
                     Spezialisierung: {specialization.name}

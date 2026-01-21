@@ -28,7 +28,7 @@ import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
 import { formatD6Value } from '@/lib/dice'
-import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getMonthInfo, getWeekdayInfo, TIMES_OF_DAY, MONTHS, createFantasyDate, type FantasyDate } from '@/lib/fantasy-calendar'
+import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getWeekdayInfo, TIMES_OF_DAY, MONTHS, createFantasyDate, type FantasyDate } from '@/lib/fantasy-calendar'
 import { getAlignment } from '@/lib/alignments'
 import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
 import NameGenerator from '@/components/NameGenerator'
@@ -59,7 +59,7 @@ export default function SpielleiterPage() {
   const [journalTimeJump, setJournalTimeJump] = useState<'immediately' | 'next_time' | 'jump_evening' | 'jump_next_morning' | 'custom'>('next_time')
   const [customJumpDate, setCustomJumpDate] = useState<{ year: number; month: number; day: number } | null>(null)
   const [customJumpTime, setCustomJumpTime] = useState<string>(TIMES_OF_DAY[0])
-  const [selectedAuthor, setSelectedAuthor] = useState<string>('')
+  const [rewardGroupReason, setRewardGroupReason] = useState('')
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
   const [newImage, setNewImage] = useState({ title: '', description: '', url: '' })
   const [journalIllustrationUrl, setJournalIllustrationUrl] = useState<string | null>(null)
@@ -68,6 +68,7 @@ export default function SpielleiterPage() {
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
   const [rewardGroupBlips, setRewardGroupBlips] = useState('')
   const [rewardSingleBlips, setRewardSingleBlips] = useState('')
+  const [rewardSingleReason, setRewardSingleReason] = useState('')
   const [rewardCharacterId, setRewardCharacterId] = useState('')
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
@@ -102,6 +103,7 @@ export default function SpielleiterPage() {
   const [groupMembers, setGroupMembers] = useState<any[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const journalBottomRef = useRef<HTMLDivElement>(null)
+  const skillDescriptionRef = useRef<HTMLTextAreaElement>(null)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
@@ -127,6 +129,17 @@ export default function SpielleiterPage() {
     ? newJournalEntry.content.trim().split(/\s+/).length
     : 0
   const canGenerateJournalIllustration = journalWordCount >= 50 && !journalIllustrationUrl
+
+  const parseSkillName = (name: string) => {
+    const trimmed = name.trim()
+    const match = trimmed.match(/^\s*(\d+)[\).\s-]+(.+)$/)
+    if (!match) {
+      return { sortOrder: null as number | null, displayName: trimmed }
+    }
+    return { sortOrder: Number(match[1]), displayName: match[2].trim() }
+  }
+
+  const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
 
   const resolveRealStartDate = useMemo(() => {
     return fantasyCalendarStart?.realStartDate
@@ -519,27 +532,9 @@ export default function SpielleiterPage() {
     const fantasyDate = editingEntry?.fantasyDate || resolvedJournalDate.fantasyDate
     const timeOfDay = editingEntry?.timeOfDay || resolvedJournalDate.timeOfDay
 
-    // Bestimme Autor
-    let author = 'Spielleiter'
-    let characterId: string | undefined = undefined
-    
-    if (selectedAuthor) {
-      if (selectedAuthor === 'spielleiter') {
-        author = 'Spielleiter'
-      } else {
-        // Prüfe ob es ein Charakter ist
-        const character = characters.find(c => c.id === selectedAuthor)
-        if (character) {
-          author = character.name
-          characterId = character.id
-        } else {
-          author = selectedAuthor
-        }
-      }
-    } else {
-      // Fallback: Spielleiter-Name aus localStorage
-      author = 'Spielleiter'
-    }
+    // Bestimme Autor (Spielleiter bzw. vorhandener Eintrag)
+    const author = editingEntry?.author || 'Spielleiter'
+    const characterId = editingEntry?.characterId
 
     // Extrahiere Titel aus Content (alles vor dem ersten Doppelpunkt)
     const contentParts = newJournalEntry.content.split(':')
@@ -576,7 +571,6 @@ export default function SpielleiterPage() {
     }
     
     setNewJournalEntry({ title: '', content: '' })
-    setSelectedAuthor('')
     setSelectedTimeOfDay('Mittag')
     setJournalIllustrationUrl(null)
     setJournalIllustrationSaved(false)
@@ -1772,12 +1766,20 @@ export default function SpielleiterPage() {
                           earnedBlips: (char.earnedBlips || 0) + amount,
                         }))
                         setRewardGroupBlips('')
+                        setRewardGroupReason('')
                       }}
                       className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold"
                     >
                       Alle belohnen
                     </button>
                   </div>
+                  <input
+                    type="text"
+                    placeholder="Begründung (optional)"
+                    value={rewardGroupReason}
+                    onChange={(e) => setRewardGroupReason(e.target.value)}
+                    className="mt-3 w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
                   <p className="text-white/60 text-sm mt-2">
                     Fügt Blips zu allen Spieler-Charakteren hinzu.
                   </p>
@@ -1821,12 +1823,20 @@ export default function SpielleiterPage() {
                           ))
                           setRewardSingleBlips('')
                           setRewardCharacterId('')
+                          setRewardSingleReason('')
                         }}
                         className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold"
                       >
                         Einzel belohnen
                       </button>
                     </div>
+                    <input
+                      type="text"
+                      placeholder="Begründung (optional)"
+                      value={rewardSingleReason}
+                      onChange={(e) => setRewardSingleReason(e.target.value)}
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
                   </div>
                   <p className="text-white/60 text-sm mt-2">
                     Für besondere Leistungen eines einzelnen Charakters.
@@ -1899,7 +1909,11 @@ export default function SpielleiterPage() {
                         )
                       : null
                   const specialEvent = entry.fantasyDate ? getSpecialEvent(entry.fantasyDate) : null
-                  const monthInfo = entry.fantasyDate ? getMonthInfo(entry.fantasyDate.month) : null
+                  const realDateLabel = entry.timestamp.toLocaleDateString('de-DE', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric',
+                  })
                   
                   return (
                     <div
@@ -1936,27 +1950,18 @@ export default function SpielleiterPage() {
                         )}
                         <div className="text-right ml-4">
                           {fantasyDate && (
-                            <div className="text-white/90 text-sm font-semibold mb-1">
+                            <div className="relative group text-white/90 text-sm font-semibold mb-1">
                               {fantasyDate}
+                              <div className="absolute right-0 top-full mt-2 w-64 bg-slate-800 rounded-lg p-3 border border-white/20 shadow-xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 delay-1000">
+                                <div className="text-white text-sm font-semibold">{fantasyDate}</div>
+                                <div className="text-white/70 text-xs mt-1">
+                                  Reales Datum: {realDateLabel}
+                                </div>
+                              </div>
                             </div>
                           )}
-                          <span className="text-white/60 text-xs">
-                            {entry.timestamp.toLocaleDateString('de-DE')}
-                          </span>
                         </div>
                       </div>
-                      {monthInfo && (
-                        <div className="mb-2 p-2 bg-white/5 rounded border border-white/10">
-                          <div className="text-white/80 text-sm">
-                            <span className="font-semibold">{monthInfo.name}:</span> {monthInfo.meaning}
-                          </div>
-                          {monthInfo.special && (
-                            <div className="text-white/70 text-xs mt-1">
-                              💡 {monthInfo.special}
-                            </div>
-                          )}
-                        </div>
-                      )}
                       {specialEvent && (
                         <div className="mb-2 p-3 bg-yellow-600/20 rounded border border-yellow-600/50">
                           <div className="text-yellow-300 font-bold text-sm mb-1">
@@ -1979,12 +1984,6 @@ export default function SpielleiterPage() {
                               })
                               setSelectedTimeOfDay(entry.timeOfDay || 'Mittag')
                               // Setze Autor
-                              if (entry.characterId) {
-                                const char = characters.find(c => c.id === entry.characterId)
-                                setSelectedAuthor(char ? char.id : '')
-                              } else {
-                                setSelectedAuthor(entry.author === 'Spielleiter' ? 'spielleiter' : '')
-                              }
                               // Scrolle zum Formular
                               journalBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
                             }}
@@ -2019,37 +2018,6 @@ export default function SpielleiterPage() {
                 {editingEntry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
               </h2>
               <div className="space-y-4">
-                {/* Autor-Auswahl */}
-                <div className="flex items-center gap-3">
-                  <label className="text-white/90 w-24">Autor:</label>
-                  <select
-                    value={selectedAuthor}
-                    onChange={(e) => setSelectedAuthor(e.target.value)}
-                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  >
-                    <option value="" className="bg-slate-800">-- Auswählen --</option>
-                    <optgroup label="Spieler-Charaktere" className="bg-slate-800">
-                      {characters.filter(c => !c.isNPC && !c.deletedDate).map(char => (
-                        <option key={char.id} value={char.id} className="bg-slate-800">
-                          {char.name} ({char.playerName})
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="NPCs" className="bg-slate-800">
-                      {characters.filter(c => c.isNPC && !c.deletedDate).map(char => (
-                        <option key={char.id} value={char.id} className="bg-slate-800">
-                          {char.name} {char.npcType ? `(${char.npcType})` : ''}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Spielleiter" className="bg-slate-800">
-                      <option value="spielleiter" className="bg-slate-800">
-                        Spielleiter
-                      </option>
-                    </optgroup>
-                  </select>
-                </div>
-
                 {/* Abenteuer-Datum Fortschritt */}
                 <div className="space-y-2">
                   <div className="text-white/70 text-sm">
@@ -2236,7 +2204,6 @@ export default function SpielleiterPage() {
                       onClick={() => {
                         setEditingEntry(null)
                         setNewJournalEntry({ title: '', content: '' })
-                        setSelectedAuthor('')
                         setSelectedTimeOfDay('Mittag')
                         setJournalIllustrationUrl(null)
                         setJournalIllustrationSaved(false)
@@ -2529,6 +2496,7 @@ export default function SpielleiterPage() {
                   <div>
                     <label className="block text-white/90 mb-2">Hover-Over-Text / Beschreibung:</label>
                     <textarea
+                      ref={skillDescriptionRef}
                       placeholder="Beschreibung der Fertigkeit (wird beim Hovern angezeigt)..."
                       value={editingSkill?.description || newSkill.description}
                       onChange={(e) => {
@@ -2576,7 +2544,7 @@ export default function SpielleiterPage() {
                       <button
                         onClick={() => {
                           if (newSkill.name.trim()) {
-                            const created = addSkill({
+                            addSkill({
                               name: newSkill.name.trim(),
                               attribute: newSkill.attribute,
                               bonusDice: 0,
@@ -2586,7 +2554,6 @@ export default function SpielleiterPage() {
                               description: newSkill.description || undefined,
                             })
                             setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
-                            setEditingSkill(created)
                             loadData()
                           }
                         }}
@@ -2602,7 +2569,21 @@ export default function SpielleiterPage() {
               {/* Fertigkeiten-Liste */}
               <div className="space-y-4">
                 {['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'].map(attr => {
-                  const attrSkills = availableSkills.filter(s => s.attribute === attr)
+                  const attrSkills = availableSkills
+                    .filter(s => s.attribute === attr)
+                    .sort((a, b) => {
+                      const aParsed = parseSkillName(a.name)
+                      const bParsed = parseSkillName(b.name)
+                      if (aParsed.sortOrder !== null && bParsed.sortOrder !== null) {
+                        if (aParsed.sortOrder !== bParsed.sortOrder) {
+                          return aParsed.sortOrder - bParsed.sortOrder
+                        }
+                        return aParsed.displayName.localeCompare(bParsed.displayName, 'de')
+                      }
+                      if (aParsed.sortOrder !== null) return -1
+                      if (bParsed.sortOrder !== null) return 1
+                      return aParsed.displayName.localeCompare(bParsed.displayName, 'de')
+                    })
                   if (attrSkills.length === 0) return null
 
                   return (
@@ -2612,7 +2593,7 @@ export default function SpielleiterPage() {
                         {attrSkills.map(skill => (
                           <div key={skill.id} className="flex items-center justify-between bg-white/5 rounded p-3 group relative">
                             <div className="flex items-center gap-3 flex-1">
-                              <span className="text-white font-medium">{skill.name}</span>
+                              <span className="text-white font-medium">{getSkillDisplayName(skill.name)}</span>
                               {skill.description && (
                                 <span className="text-white/50 text-xs cursor-help" title={skill.description}>
                                   ℹ️
@@ -2621,11 +2602,6 @@ export default function SpielleiterPage() {
                               {skill.isWeakened && (
                                 <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded">
                                   Geschwächt
-                                </span>
-                              )}
-                              {skill.isCustom && (
-                                <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                  Eigen
                                 </span>
                               )}
                               {/* Hover-Over-Text */}
@@ -2639,6 +2615,10 @@ export default function SpielleiterPage() {
                               <button
                                 onClick={() => {
                                   setEditingSkill(skill)
+                                  setTimeout(() => {
+                                    skillDescriptionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                    skillDescriptionRef.current?.focus()
+                                  }, 0)
                                 }}
                                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
                                 title="Bearbeiten"
