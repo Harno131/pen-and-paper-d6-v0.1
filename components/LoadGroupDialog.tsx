@@ -39,12 +39,13 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
 
     const trimmedCode = groupCode.trim().toUpperCase()
     if (trimmedCode === MASTER_PASSWORD) {
-      if (!selectedGroupId) {
+      const resolvedGroupId = selectedGroupId || (groups.length === 1 ? groups[0].id : '')
+      if (!resolvedGroupId) {
         setError('Bitte wähle eine Gruppe für das Master-Passwort.')
         setLoading(false)
         return
       }
-      const group = groups.find(g => g.id === selectedGroupId)
+      const group = groups.find(g => g.id === resolvedGroupId)
       if (!group) {
         setError('Gruppe nicht gefunden')
         setLoading(false)

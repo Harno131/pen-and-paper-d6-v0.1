@@ -112,11 +112,25 @@ export const joinGroup = async (groupId: string, playerName: string, role: 'spie
   const supabase = createSupabaseClient()
   if (!supabase) return false
 
+  // Upsert erlaubt erneutes Beitreten ohne Fehler (z.B. GM lädt bestehende Gruppe)
   const { error } = await supabase
     .from('group_members')
-    .insert({ group_id: groupId, player_name: playerName, role })
+    .upsert(
+      { group_id: groupId, player_name: playerName, role },
+      { onConflict: 'group_id,player_name' }
+    )
 
-  return !error
+  if (!error) return true
+
+  // Fallback: wenn bereits Mitglied, Login trotzdem erlauben
+  const { data: existing } = await supabase
+    .from('group_members')
+    .select('id')
+    .eq('group_id', groupId)
+    .eq('player_name', playerName)
+    .maybeSingle()
+
+  return Boolean(existing)
 }
 
 export const getGroupMembers = async (groupId: string) => {
