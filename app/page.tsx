@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { validateGroupMembership } from '@/lib/supabase-data'
 import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
+import { getCharacters } from '@/lib/data'
 import GmGroupSelector from '@/components/GmGroupSelector'
 import LoadGroupDialog from '@/components/LoadGroupDialog'
 import CreateGroupDialog from '@/components/CreateGroupDialog'
@@ -25,6 +26,7 @@ export default function Home() {
   const [debugLoading, setDebugLoading] = useState(false)
   const [debugData, setDebugData] = useState<any | null>(null)
   const [debugError, setDebugError] = useState('')
+  const [debugSyncMessage, setDebugSyncMessage] = useState('')
   const [supabaseUrl, setSupabaseUrl] = useState('')
   const router = useRouter()
 
@@ -88,6 +90,7 @@ export default function Home() {
     setDebugOpen(true)
     setDebugLoading(true)
     setDebugError('')
+    setDebugSyncMessage('')
     try {
       const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') || '' : ''
       const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') || '' : ''
@@ -98,6 +101,34 @@ export default function Home() {
       setDebugError(message)
     } finally {
       setDebugLoading(false)
+    }
+  }
+
+  const handleSyncLocalCharacters = async () => {
+    setDebugSyncMessage('')
+    const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') || '' : ''
+    if (!groupId) {
+      setDebugSyncMessage('Kein groupId gefunden. Bitte zuerst einer Gruppe beitreten.')
+      return
+    }
+    try {
+      const { saveCharacterToSupabase } = await import('@/lib/supabase-data')
+      const characters = getCharacters()
+        .filter((char) => !char.deletedDate)
+      if (characters.length === 0) {
+        setDebugSyncMessage('Keine lokalen Charaktere gefunden.')
+        return
+      }
+      for (const character of characters) {
+        await saveCharacterToSupabase(groupId, character)
+      }
+      setDebugSyncMessage(`Lokale Charaktere synchronisiert: ${characters.length}`)
+      const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') || '' : ''
+      const diagnostics = await getSupabaseDiagnostics({ playerName, groupId })
+      setDebugData(diagnostics)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+      setDebugSyncMessage(`Sync-Fehler: ${message}`)
     }
   }
 
@@ -273,6 +304,17 @@ export default function Home() {
                         characters (playerName):{' '}
                         {(debugData.counts.playerCharacters.count ?? debugData.counts.playerCharacters.error) ?? '—'}
                       </div>
+                    )}
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={handleSyncLocalCharacters}
+                      className="w-full px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
+                    >
+                      Lokale Charaktere nach Supabase synchronisieren
+                    </button>
+                    {debugSyncMessage && (
+                      <div className="mt-2 text-white/70">{debugSyncMessage}</div>
                     )}
                   </div>
                 </>
