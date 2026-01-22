@@ -21,6 +21,24 @@ import {
 } from './file-storage'
 
 // Hybrid: Supabase wenn verfügbar, sonst localStorage
+let lastStorageError: string | null = null
+
+export const getStorageError = () => lastStorageError
+export const clearStorageError = () => {
+  lastStorageError = null
+}
+
+const safeSetItem = (key: string, value: string): boolean => {
+  try {
+    localStorage.setItem(key, value)
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+    lastStorageError = `Lokaler Speicher ist voll oder blockiert. (${key}) ${message}`
+    console.warn('Speicherfehler:', key, error)
+    return false
+  }
+}
 const isSupabaseAvailable = (): boolean => {
   if (typeof window === 'undefined') return false
   const supabase = createSupabaseClient()
@@ -63,7 +81,7 @@ export const saveCharacters = (characters: Character[]): void => {
   }
   
   // Immer auch localStorage (für Fallback)
-  localStorage.setItem('characters', JSON.stringify(characters))
+  safeSetItem('characters', JSON.stringify(characters))
 }
 
 // Neue async Funktionen für Supabase und Datei-Storage
@@ -81,7 +99,7 @@ export const getCharactersAsync = async (): Promise<Character[]> => {
     const fileCharacters = await loadCharactersFromFile(groupId)
     if (fileCharacters.length > 0) {
       // Auch in localStorage speichern für Offline-Fallback
-      localStorage.setItem('characters', JSON.stringify(fileCharacters))
+      safeSetItem('characters', JSON.stringify(fileCharacters))
       return fileCharacters
     }
   }
@@ -91,7 +109,7 @@ export const getCharactersAsync = async (): Promise<Character[]> => {
     const characters = await getCharactersFromSupabase(groupId)
     if (characters.length > 0) {
       // Auch in localStorage speichern für Offline-Fallback
-      localStorage.setItem('characters', JSON.stringify(characters))
+      safeSetItem('characters', JSON.stringify(characters))
       // Optional: Auch in Dateien speichern (Backup)
       if (isFileStorageEnabled()) {
         await saveCharactersToFile(groupId, characters).catch(err => {
@@ -146,7 +164,7 @@ export const getJournalEntries = async (): Promise<JournalEntry[]> => {
     const fileEntries = await loadJournalEntriesFromFile(groupId)
     if (fileEntries.length > 0) {
       // Auch in localStorage speichern für Offline-Fallback
-      localStorage.setItem('journalEntries', JSON.stringify(fileEntries))
+      safeSetItem('journalEntries', JSON.stringify(fileEntries))
       return fileEntries
     }
   }
@@ -157,7 +175,7 @@ export const getJournalEntries = async (): Promise<JournalEntry[]> => {
     const entries = await getJournalEntriesFromSupabase(groupId)
     if (entries.length > 0) {
       // Auch in localStorage speichern für Offline-Fallback
-      localStorage.setItem('journalEntries', JSON.stringify(entries))
+      safeSetItem('journalEntries', JSON.stringify(entries))
       // Optional: Auch in Dateien speichern (Backup)
       if (isFileStorageEnabled()) {
         await saveJournalEntriesToFile(groupId, entries).catch(err => {
@@ -188,7 +206,7 @@ export const saveJournalEntry = async (entry: JournalEntry): Promise<void> => {
   // Immer auch localStorage
   const entries = await getJournalEntries()
   entries.push(entry)
-  localStorage.setItem('journalEntries', JSON.stringify(entries))
+  safeSetItem('journalEntries', JSON.stringify(entries))
   
   // Speichere in Datei-Storage (wenn aktiviert)
   if (isFileStorageEnabled() && groupId) {
@@ -224,7 +242,7 @@ export const saveSharedImage = (image: SharedImage): boolean => {
   try {
     const images = getSharedImages()
     images.push(image)
-    localStorage.setItem('sharedImages', JSON.stringify(images))
+    safeSetItem('sharedImages', JSON.stringify(images))
     return true
   } catch (error) {
     console.warn('Fehler beim Speichern des Bildes:', error)
@@ -253,7 +271,7 @@ export const saveDiceRoll = (roll: DiceRoll) => {
   if (typeof window === 'undefined') return
   const rolls = getDiceRolls()
   rolls.push(roll)
-  localStorage.setItem('diceRolls', JSON.stringify(rolls))
+  safeSetItem('diceRolls', JSON.stringify(rolls))
 }
 
 // Gelöschte Charaktere (soft delete)
@@ -274,7 +292,7 @@ export const getDeletedCharacters = (): DeletedCharacter[] => {
 
 export const saveDeletedCharacters = (deletedCharacters: DeletedCharacter[]) => {
   if (typeof window === 'undefined') return
-  localStorage.setItem('deletedCharacters', JSON.stringify(deletedCharacters))
+  safeSetItem('deletedCharacters', JSON.stringify(deletedCharacters))
 }
 
 export const deleteCharacter = (characterId: string): boolean => {
@@ -370,28 +388,27 @@ export const getAvailableSkills = (): Skill[] => {
   return defaultSkills
 }
 
-export const saveAvailableSkills = (skills: Skill[]) => {
-  if (typeof window === 'undefined') return
-  localStorage.setItem('availableSkills', JSON.stringify(skills))
+export const saveAvailableSkills = (skills: Skill[]): boolean => {
+  if (typeof window === 'undefined') return false
+  return safeSetItem('availableSkills', JSON.stringify(skills))
 }
 
-export const addSkill = (skill: Omit<Skill, 'id'>): Skill => {
+export const addSkill = (skill: Omit<Skill, 'id'>): Skill | null => {
   const skills = getAvailableSkills()
   const newSkill: Skill = {
     ...skill,
     id: `skill-${Date.now()}`,
   }
   skills.push(newSkill)
-  saveAvailableSkills(skills)
-  return newSkill
+  const ok = saveAvailableSkills(skills)
+  return ok ? newSkill : null
 }
 
 export const removeSkill = (skillId: string): boolean => {
   const skills = getAvailableSkills()
   const filtered = skills.filter(s => s.id !== skillId)
   if (filtered.length === skills.length) return false
-  saveAvailableSkills(filtered)
-  return true
+  return saveAvailableSkills(filtered)
 }
 
 export const updateSkill = (skillId: string, updates: Partial<Skill>): boolean => {
@@ -403,8 +420,7 @@ export const updateSkill = (skillId: string, updates: Partial<Skill>): boolean =
     return s
   })
   if (updated === skills) return false
-  saveAvailableSkills(updated)
-  return true
+  return saveAvailableSkills(updated)
 }
 
 // Charaktererstellungs-Einstellungen
@@ -431,7 +447,7 @@ export const getCharacterCreationSettings = (): CharacterCreationSettings => {
 
 export const saveCharacterCreationSettings = (settings: CharacterCreationSettings) => {
   if (typeof window === 'undefined') return
-  localStorage.setItem('characterCreationSettings', JSON.stringify(settings))
+  safeSetItem('characterCreationSettings', JSON.stringify(settings))
 }
 
 // Prüft Charakter auf Punkte-Status (verwendet gespeicherte Werte für Kompatibilität)

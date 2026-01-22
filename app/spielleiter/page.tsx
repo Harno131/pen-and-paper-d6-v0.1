@@ -22,6 +22,8 @@ import {
   saveCharacterCreationSettings,
   calculateCharacterPoints,
   calculateHitPoints,
+  getStorageError,
+  clearStorageError,
 } from '@/lib/data'
 import { getGroupSettings, getBestiary, upsertBestiary, removeBestiary } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
@@ -68,6 +70,7 @@ export default function SpielleiterPage() {
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
+  const [storageError, setStorageError] = useState('')
   const [rewardGroupBlips, setRewardGroupBlips] = useState('')
   const [rewardSingleBlips, setRewardSingleBlips] = useState('')
   const [rewardSingleReason, setRewardSingleReason] = useState('')
@@ -365,6 +368,10 @@ export default function SpielleiterPage() {
     setDiceRolls(getDiceRolls())
     setAvailableSkills(getAvailableSkills())
     setSettings(getCharacterCreationSettings())
+    const storageError = getStorageError()
+    if (storageError) {
+      setStorageError(storageError)
+    }
     const bestiaryData = await getBestiary()
     setBestiary(bestiaryData)
     
@@ -697,6 +704,21 @@ export default function SpielleiterPage() {
             Abmelden
           </button>
         </div>
+        {storageError && (
+          <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200">
+            <div className="font-semibold mb-1">Speicher-Problem</div>
+            <div className="text-sm">{storageError}</div>
+            <button
+              onClick={() => {
+                clearStorageError()
+                setStorageError('')
+              }}
+              className="mt-3 px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-semibold"
+            >
+              Hinweis schließen
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
@@ -2612,7 +2634,7 @@ export default function SpielleiterPage() {
                       <button
                         onClick={() => {
                           if (newSkill.name.trim()) {
-                            addSkill({
+                            const created = addSkill({
                               name: newSkill.name.trim(),
                               attribute: newSkill.attribute,
                               bonusDice: 0,
@@ -2621,6 +2643,11 @@ export default function SpielleiterPage() {
                               isCustom: true,
                               description: newSkill.description || undefined,
                             })
+                            if (!created) {
+                              const storageError = getStorageError()
+                              setStorageError(storageError || 'Fertigkeit konnte nicht gespeichert werden.')
+                              return
+                            }
                             setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
                             loadData()
                           }

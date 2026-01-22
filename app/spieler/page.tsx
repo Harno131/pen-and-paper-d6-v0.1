@@ -14,6 +14,8 @@ import {
   calculateCharacterPoints,
   getCharacterCreationSettings,
   calculateHitPoints,
+  getStorageError,
+  clearStorageError,
 } from '@/lib/data'
 import { getGroupSettings } from '@/lib/supabase-data'
 import { calculateSkillValue } from '@/lib/skills'
@@ -49,6 +51,7 @@ export default function SpielerPage() {
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
+  const [storageError, setStorageError] = useState('')
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
@@ -111,6 +114,10 @@ export default function SpielerPage() {
     const entries = await getJournalEntries()
     setJournalEntries(entries)
     setSharedImages(getSharedImages())
+    const storageError = getStorageError()
+    if (storageError) {
+      setStorageError(storageError)
+    }
 
     if (groupId) {
       const groupSettings = await getGroupSettings(groupId)
@@ -389,6 +396,21 @@ export default function SpielerPage() {
             Abmelden
           </button>
         </div>
+        {storageError && (
+          <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200">
+            <div className="font-semibold mb-1">Speicher-Problem</div>
+            <div className="text-sm">{storageError}</div>
+            <button
+              onClick={() => {
+                clearStorageError()
+                setStorageError('')
+              }}
+              className="mt-3 px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-semibold"
+            >
+              Hinweis schließen
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 flex-wrap">
