@@ -104,6 +104,7 @@ export default function SpielleiterPage() {
   const journalBottomRef = useRef<HTMLDivElement>(null)
   const skillDescriptionRef = useRef<HTMLTextAreaElement>(null)
   const isUserEditingRef = useRef(false)
+  const lastInputAtRef = useRef(0)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
@@ -294,12 +295,17 @@ export default function SpielleiterPage() {
         isUserEditingRef.current = false
       }, 200)
     }
+    const handleInput = () => {
+      lastInputAtRef.current = Date.now()
+    }
     document.addEventListener('focusin', handleFocusIn)
     document.addEventListener('focusout', handleFocusOut)
+    document.addEventListener('input', handleInput, true)
     return () => {
       if (blurTimeout) window.clearTimeout(blurTimeout)
       document.removeEventListener('focusin', handleFocusIn)
       document.removeEventListener('focusout', handleFocusOut)
+      document.removeEventListener('input', handleInput, true)
     }
   }, [])
 
@@ -404,6 +410,7 @@ export default function SpielleiterPage() {
         || activeEl instanceof HTMLTextAreaElement
         || activeEl instanceof HTMLSelectElement
         || (activeEl instanceof HTMLElement && activeEl.isContentEditable)
+      if (Date.now() - lastInputAtRef.current < 1500) return
       if (isUserEditingRef.current || isEditingElement || showNpcCreation || Boolean(editingMonster)) return
       loadData()
     }, 5000) // Alle 5 Sekunden

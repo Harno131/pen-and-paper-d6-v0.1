@@ -830,19 +830,19 @@ export default function CharacterCreationExtended({
 
                   return (
                     <div key={attr} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                      <div className="grid grid-cols-4 items-center gap-4 mb-3">
+                      <div className="grid grid-cols-4 items-center gap-4 mb-3" aria-hidden="true">
                         <div />
-                        <div className="text-center text-xs text-white/60 font-mono tabular-nums">
+                        <div className="text-center text-xs text-white/60 font-mono tabular-nums h-4 opacity-0">
                           +1D
                         </div>
-                        <div className="text-center text-xs text-white/60 font-mono tabular-nums">
+                        <div className="text-center text-xs text-white/60 font-mono tabular-nums h-4 opacity-0">
                           +1 (Blib)
                         </div>
-                        <div className="text-center text-xs text-white/60 font-mono tabular-nums">
+                        <div className="text-center text-xs text-white/60 font-mono tabular-nums h-4 opacity-0">
                           Wert
                         </div>
                       </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
+                      <div className="grid grid-cols-4 items-center gap-4 rounded p-3 border border-white/10 bg-black/30">
                         <div className="flex items-center gap-3">
                           <h3 className="text-white font-semibold text-lg">{attr}</h3>
                         </div>
@@ -972,7 +972,7 @@ export default function CharacterCreationExtended({
                                     const specValue = calculateSkillValue(attributeValue, bonus, totalBlibs, skill.isWeakened, learned)
 
                                     return (
-                                      <div key={spec.id} className="grid grid-cols-4 items-center gap-4 bg-white/5 rounded p-2">
+                                      <div key={spec.id} className="grid grid-cols-4 items-center gap-4 bg-white/10 rounded p-3 border border-white/10">
                                         <div className="pl-6">
                                           <span className="text-white">{spec.name}</span>
                                         </div>

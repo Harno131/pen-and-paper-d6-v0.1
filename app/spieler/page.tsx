@@ -57,6 +57,7 @@ export default function SpielerPage() {
     realStartDate?: string
   } | null>(null)
   const isUserEditingRef = useRef(false)
+  const lastInputAtRef = useRef(0)
   const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
@@ -159,12 +160,17 @@ export default function SpielerPage() {
         isUserEditingRef.current = false
       }, 200)
     }
+    const handleInput = () => {
+      lastInputAtRef.current = Date.now()
+    }
     document.addEventListener('focusin', handleFocusIn)
     document.addEventListener('focusout', handleFocusOut)
+    document.addEventListener('input', handleInput, true)
     return () => {
       if (blurTimeout) window.clearTimeout(blurTimeout)
       document.removeEventListener('focusin', handleFocusIn)
       document.removeEventListener('focusout', handleFocusOut)
+      document.removeEventListener('input', handleInput, true)
     }
   }, [])
 
@@ -176,6 +182,7 @@ export default function SpielerPage() {
         || activeEl instanceof HTMLTextAreaElement
         || activeEl instanceof HTMLSelectElement
         || (activeEl instanceof HTMLElement && activeEl.isContentEditable)
+      if (Date.now() - lastInputAtRef.current < 1500) return
       if (isUserEditingRef.current || isEditingElement || showCharacterCreation) return
       loadData()
     }, 5000) // Alle 5 Sekunden
