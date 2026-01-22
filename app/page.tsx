@@ -251,25 +251,27 @@ export default function Home() {
                   )}
                   <div>
                     <span className="text-white/70">Counts:</span>
-                    <div>groups: {debugData?.counts?.groups?.count ?? debugData?.counts?.groups?.error || '—'}</div>
+                    <div>
+                      groups: {(debugData?.counts?.groups?.count ?? debugData?.counts?.groups?.error) ?? '—'}
+                    </div>
                     <div>
                       group_members:{' '}
-                      {debugData?.counts?.groupMembers?.count ?? debugData?.counts?.groupMembers?.error || '—'}
+                      {(debugData?.counts?.groupMembers?.count ?? debugData?.counts?.groupMembers?.error) ?? '—'}
                     </div>
                     <div>
                       characters:{' '}
-                      {debugData?.counts?.characters?.count ?? debugData?.counts?.characters?.error || '—'}
+                      {(debugData?.counts?.characters?.count ?? debugData?.counts?.characters?.error) ?? '—'}
                     </div>
                     {debugData?.counts?.groupCharacters && (
                       <div>
                         characters (groupId):{' '}
-                        {debugData.counts.groupCharacters.count ?? debugData.counts.groupCharacters.error || '—'}
+                        {(debugData.counts.groupCharacters.count ?? debugData.counts.groupCharacters.error) ?? '—'}
                       </div>
                     )}
                     {debugData?.counts?.playerCharacters && (
                       <div>
                         characters (playerName):{' '}
-                        {debugData.counts.playerCharacters.count ?? debugData.counts.playerCharacters.error || '—'}
+                        {(debugData.counts.playerCharacters.count ?? debugData.counts.playerCharacters.error) ?? '—'}
                       </div>
                     )}
                   </div>
