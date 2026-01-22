@@ -18,6 +18,7 @@ import {
   clearStorageError,
 } from '@/lib/data'
 import { getGroupSettings } from '@/lib/supabase-data'
+import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
 import { calculateSkillValue } from '@/lib/skills'
 import { formatD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, TIMES_OF_DAY, getSpecialEvent, getMonthInfo } from '@/lib/fantasy-calendar'
@@ -52,6 +53,12 @@ export default function SpielerPage() {
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
   const [storageError, setStorageError] = useState('')
+  const [debugOpen, setDebugOpen] = useState(false)
+  const [debugLoading, setDebugLoading] = useState(false)
+  const [debugData, setDebugData] = useState<any | null>(null)
+  const [debugError, setDebugError] = useState('')
+  const [debugSyncMessage, setDebugSyncMessage] = useState('')
+  const [supabaseUrl, setSupabaseUrl] = useState('')
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
@@ -162,6 +169,59 @@ export default function SpielerPage() {
       window.removeEventListener('storage-error', handleStorageError as EventListener)
     }
   }, [])
+
+  useEffect(() => {
+    setSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || '')
+  }, [])
+
+  const handleToggleDebug = async () => {
+    if (debugOpen) {
+      setDebugOpen(false)
+      return
+    }
+    setDebugOpen(true)
+    setDebugLoading(true)
+    setDebugError('')
+    setDebugSyncMessage('')
+    try {
+      const currentPlayerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') || '' : ''
+      const currentGroupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') || '' : ''
+      const diagnostics = await getSupabaseDiagnostics({ playerName: currentPlayerName, groupId: currentGroupId })
+      setDebugData(diagnostics)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+      setDebugError(message)
+    } finally {
+      setDebugLoading(false)
+    }
+  }
+
+  const handleSyncLocalCharacters = async () => {
+    setDebugSyncMessage('')
+    const currentGroupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') || '' : ''
+    if (!currentGroupId) {
+      setDebugSyncMessage('Kein groupId gefunden. Bitte zuerst einer Gruppe beitreten.')
+      return
+    }
+    try {
+      const { saveCharacterToSupabase } = await import('@/lib/supabase-data')
+      const characters = getCharacters().filter((char) => !char.deletedDate)
+      if (characters.length === 0) {
+        setDebugSyncMessage('Keine lokalen Charaktere gefunden.')
+        return
+      }
+      for (const character of characters) {
+        await saveCharacterToSupabase(currentGroupId, character)
+      }
+      setDebugSyncMessage(`Lokale Charaktere synchronisiert: ${characters.length}`)
+      const currentPlayerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') || '' : ''
+      const diagnostics = await getSupabaseDiagnostics({ playerName: currentPlayerName, groupId: currentGroupId })
+      setDebugData(diagnostics)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+      setDebugSyncMessage(`Sync-Fehler: ${message}`)
+    }
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -426,6 +486,87 @@ export default function SpielerPage() {
             </button>
           </div>
         )}
+        <div className="mb-6">
+          <button
+            onClick={handleToggleDebug}
+            className="w-full px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors"
+          >
+            {debugOpen ? 'Debug ausblenden' : 'Debug anzeigen'}
+          </button>
+          {debugOpen && (
+            <div className="mt-3 rounded-lg border border-white/20 bg-white/5 p-4 text-xs text-white/80 space-y-3">
+              <div className="text-white font-semibold text-sm">Supabase Debug</div>
+              {debugLoading && <div>Debug-Daten werden geladen…</div>}
+              {debugError && <div className="text-red-300">Fehler: {debugError}</div>}
+              {!debugLoading && !debugError && (
+                <>
+                  <div>
+                    <span className="text-white/70">Supabase URL:</span> {supabaseUrl || '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">groupId:</span>{' '}
+                    {typeof window !== 'undefined' ? localStorage.getItem('groupId') || '—' : '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">playerName:</span>{' '}
+                    {typeof window !== 'undefined' ? localStorage.getItem('playerName') || '—' : '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">role:</span>{' '}
+                    {typeof window !== 'undefined' ? localStorage.getItem('userRole') || '—' : '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">Connection:</span>{' '}
+                    {debugData?.connection?.success ? 'OK' : debugData?.connection?.error || 'Fehler'}
+                  </div>
+                  {debugData?.tables?.missing?.length > 0 && (
+                    <div>
+                      <span className="text-white/70">Fehlende Tabellen:</span>{' '}
+                      {debugData.tables.missing.join(', ')}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-white/70">Counts:</span>
+                    <div>
+                      groups: {(debugData?.counts?.groups?.count ?? debugData?.counts?.groups?.error) ?? '—'}
+                    </div>
+                    <div>
+                      group_members:{' '}
+                      {(debugData?.counts?.groupMembers?.count ?? debugData?.counts?.groupMembers?.error) ?? '—'}
+                    </div>
+                    <div>
+                      characters:{' '}
+                      {(debugData?.counts?.characters?.count ?? debugData?.counts?.characters?.error) ?? '—'}
+                    </div>
+                    {debugData?.counts?.groupCharacters && (
+                      <div>
+                        characters (groupId):{' '}
+                        {(debugData.counts.groupCharacters.count ?? debugData.counts.groupCharacters.error) ?? '—'}
+                      </div>
+                    )}
+                    {debugData?.counts?.playerCharacters && (
+                      <div>
+                        characters (playerName):{' '}
+                        {(debugData.counts.playerCharacters.count ?? debugData.counts.playerCharacters.error) ?? '—'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={handleSyncLocalCharacters}
+                      className="w-full px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
+                    >
+                      Lokale Charaktere nach Supabase synchronisieren
+                    </button>
+                    {debugSyncMessage && (
+                      <div className="mt-2 text-white/70">{debugSyncMessage}</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 flex-wrap">
