@@ -171,7 +171,12 @@ export default function SpielerPage() {
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isUserEditingRef.current || showCharacterCreation) return
+      const activeEl = typeof document !== 'undefined' ? document.activeElement : null
+      const isEditingElement = activeEl instanceof HTMLInputElement
+        || activeEl instanceof HTMLTextAreaElement
+        || activeEl instanceof HTMLSelectElement
+        || (activeEl instanceof HTMLElement && activeEl.isContentEditable)
+      if (isUserEditingRef.current || isEditingElement || showCharacterCreation) return
       loadData()
     }, 5000) // Alle 5 Sekunden
 

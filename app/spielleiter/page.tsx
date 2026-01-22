@@ -47,6 +47,7 @@ const DEFAULT_MONSTER_ATTRIBUTES = {
 }
 
 export default function SpielleiterPage() {
+  const MAX_SHARED_IMAGE_BYTES = 2 * 1024 * 1024
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'overview' | 'deleted' | 'journal' | 'images' | 'skills' | 'settings' | 'bestiary'>('overview')
   const [characters, setCharacters] = useState<Character[]>([])
@@ -398,7 +399,12 @@ export default function SpielleiterPage() {
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isUserEditingRef.current || showNpcCreation || Boolean(editingMonster)) return
+      const activeEl = typeof document !== 'undefined' ? document.activeElement : null
+      const isEditingElement = activeEl instanceof HTMLInputElement
+        || activeEl instanceof HTMLTextAreaElement
+        || activeEl instanceof HTMLSelectElement
+        || (activeEl instanceof HTMLElement && activeEl.isContentEditable)
+      if (isUserEditingRef.current || isEditingElement || showNpcCreation || Boolean(editingMonster)) return
       loadData()
     }, 5000) // Alle 5 Sekunden
 
@@ -524,6 +530,12 @@ export default function SpielleiterPage() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > MAX_SHARED_IMAGE_BYTES) {
+      setSharedImageError(`Bild zu groß. Maximal erlaubt: ${Math.floor(MAX_SHARED_IMAGE_BYTES / 1024 / 1024)} MB.`)
+      e.target.value = ''
+      setNewImage({ ...newImage, url: '' })
+      return
+    }
 
     const reader = new FileReader()
     reader.onload = (event) => {
@@ -2389,6 +2401,9 @@ export default function SpielleiterPage() {
                     onChange={handleImageUpload}
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-600 file:text-white hover:file:bg-primary-700"
                   />
+                  <p className="text-white/60 text-xs mt-2">
+                    Max. Uploadgröße: {Math.floor(MAX_SHARED_IMAGE_BYTES / 1024 / 1024)} MB
+                  </p>
                 </div>
                 <input
                   type="text"

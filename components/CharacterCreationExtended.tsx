@@ -831,9 +831,7 @@ export default function CharacterCreationExtended({
                   return (
                     <div key={attr} className="bg-white/5 rounded-lg p-4 border border-white/10">
                       <div className="grid grid-cols-4 items-center gap-4 mb-3">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-white font-semibold text-lg">{attr}</h3>
-                        </div>
+                        <div />
                         <div className="text-center text-xs text-white/60 font-mono tabular-nums">
                           +1D
                         </div>
@@ -845,8 +843,8 @@ export default function CharacterCreationExtended({
                         </div>
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
-                        <div className="text-white/80 font-mono tabular-nums">
-                          {attributeValue}
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-white font-semibold text-lg">{attr}</h3>
                         </div>
                         <div className="flex items-center gap-2 justify-center">
                           <button
@@ -1014,9 +1012,36 @@ export default function CharacterCreationExtended({
                         })}
                       </div>
                       
-                      {/* Spezialisierung hinzufügen - ÜBER "Eigene Fertigkeit hinzufügen" */}
+                      {/* Freie Zeile für eigene Fertigkeitsvorschläge */}
+                      <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-4 items-center gap-4">
+                        <input
+                          type="text"
+                          placeholder="Eigene Fertigkeit hinzufügen..."
+                          value={customSkills[attr] || ''}
+                          onChange={(e) => setCustomSkills(prev => ({ ...prev, [attr]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && customSkills[attr]) {
+                              handleAddCustomSkill(attr, customSkills[attr])
+                            }
+                          }}
+                          className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 text-sm"
+                        />
+                        <div />
+                        <div />
+                        <button
+                          onClick={() => {
+                            if (customSkills[attr]) {
+                              handleAddCustomSkill(attr, customSkills[attr])
+                            }
+                          }}
+                          className="w-full px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded text-sm"
+                        >
+                          Hinzufügen
+                        </button>
+                      </div>
+
+                      {/* Spezialisierung hinzufügen - unter "Eigene Fertigkeit hinzufügen" */}
                       <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
-                        <div className="text-white/90 text-sm font-medium mb-2">Eine Spezialisierung hinzufügen:</div>
                         <div className="grid grid-cols-4 items-center gap-4">
                           <input
                             type="text"
@@ -1064,34 +1089,6 @@ export default function CharacterCreationExtended({
                             Hinzufügen
                           </button>
                         </div>
-                      </div>
-                      
-                      {/* Freie Zeile für eigene Fertigkeitsvorschläge */}
-                      <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-4 items-center gap-4">
-                        <input
-                          type="text"
-                          placeholder="Eigene Fertigkeit hinzufügen..."
-                          value={customSkills[attr] || ''}
-                          onChange={(e) => setCustomSkills(prev => ({ ...prev, [attr]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && customSkills[attr]) {
-                              handleAddCustomSkill(attr, customSkills[attr])
-                            }
-                          }}
-                          className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 text-sm"
-                        />
-                        <div />
-                        <div />
-                        <button
-                          onClick={() => {
-                            if (customSkills[attr]) {
-                              handleAddCustomSkill(attr, customSkills[attr])
-                            }
-                          }}
-                          className="w-full px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded text-sm"
-                        >
-                          Hinzufügen
-                        </button>
                       </div>
                     </div>
                   )
