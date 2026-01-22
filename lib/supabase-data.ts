@@ -210,11 +210,14 @@ export const removePlayerFromGroup = async (groupId: string, memberId: string, p
   if (!supabase) return false
 
   // Entferne Spieler aus group_members
-  const { error: memberError } = await supabase
+  const deleteQuery = supabase
     .from('group_members')
     .delete()
     .eq('group_id', groupId)
-    .eq('id', memberId)
+
+  const { error: memberError } = memberId.startsWith('virtual-')
+    ? await deleteQuery.eq('player_name', playerName)
+    : await deleteQuery.eq('id', memberId)
 
   if (memberError) {
     console.error('Error removing player from group:', memberError)

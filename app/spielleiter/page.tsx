@@ -141,6 +141,26 @@ export default function SpielleiterPage() {
 
   const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
 
+  const displayMembers = useMemo(() => {
+    const memberMap = new Map<string, any>()
+    groupMembers.forEach((member) => {
+      memberMap.set(member.player_name, member)
+    })
+    characters
+      .filter((char) => !char.deletedDate && !char.isNPC)
+      .forEach((char) => {
+        if (!memberMap.has(char.playerName)) {
+          memberMap.set(char.playerName, {
+            id: `virtual-${char.playerName}`,
+            player_name: char.playerName,
+            role: 'spieler',
+            isVirtual: true,
+          })
+        }
+      })
+    return Array.from(memberMap.values())
+  }, [groupMembers, characters])
+
   const resolveRealStartDate = useMemo(() => {
     return fantasyCalendarStart?.realStartDate
       ? new Date(fantasyCalendarStart.realStartDate)
@@ -2989,13 +3009,13 @@ export default function SpielleiterPage() {
                   <span>Spieler verwalten</span>
                 </h2>
                 <div className="space-y-4">
-                  {groupMembers.length === 0 ? (
+                  {displayMembers.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-white/60 text-lg">Keine Spieler in dieser Gruppe.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {groupMembers.map((member) => {
+                      {displayMembers.map((member) => {
                         const playerCharacters = characters.filter(c => c.playerName === member.player_name && !c.deletedDate)
                         const isGM = member.role === 'spielleiter'
                         

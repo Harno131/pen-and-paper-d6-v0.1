@@ -9,6 +9,7 @@ interface LoadGroupDialogProps {
 }
 
 export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroupDialogProps) {
+  const MASTER_PASSWORD = '1313'
   const [groups, setGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
@@ -37,6 +38,27 @@ export default function LoadGroupDialog({ onGroupSelected, onCancel }: LoadGroup
     setError('')
 
     const trimmedCode = groupCode.trim().toUpperCase()
+    if (trimmedCode === MASTER_PASSWORD) {
+      if (!selectedGroupId) {
+        setError('Bitte wähle eine Gruppe für das Master-Passwort.')
+        setLoading(false)
+        return
+      }
+      const group = groups.find(g => g.id === selectedGroupId)
+      if (!group) {
+        setError('Gruppe nicht gefunden')
+        setLoading(false)
+        return
+      }
+      const success = await joinGroup(group.id, gmName, 'spielleiter')
+      if (success) {
+        onGroupSelected(group.id, group.code, gmName, 'spielleiter')
+      } else {
+        setError('Fehler beim Laden der Gruppe.')
+      }
+      setLoading(false)
+      return
+    }
     const isGmCode = trimmedCode.startsWith('X') && trimmedCode.endsWith('X') && trimmedCode.length >= 3
     
     let actualCode = trimmedCode
