@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { validateGroupMembership } from '@/lib/supabase-data'
+import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
 import GmGroupSelector from '@/components/GmGroupSelector'
 import LoadGroupDialog from '@/components/LoadGroupDialog'
 import CreateGroupDialog from '@/components/CreateGroupDialog'
@@ -20,6 +21,11 @@ export default function Home() {
   const [viewState, setViewState] = useState<ViewState>('home')
   const [hasSupabase, setHasSupabase] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
+  const [debugOpen, setDebugOpen] = useState(false)
+  const [debugLoading, setDebugLoading] = useState(false)
+  const [debugData, setDebugData] = useState<any | null>(null)
+  const [debugError, setDebugError] = useState('')
+  const [supabaseUrl, setSupabaseUrl] = useState('')
   const router = useRouter()
 
   const checkExistingGroup = useCallback(async () => {
@@ -64,6 +70,7 @@ export default function Home() {
     // Prüfe ob Supabase konfiguriert ist
     const supabase = createSupabaseClient()
     setHasSupabase(supabase !== null)
+    setSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || '')
 
     // Wenn Supabase verfügbar ist, prüfe ob bereits eine Gruppe ausgewählt ist
     if (supabase) {
@@ -72,6 +79,27 @@ export default function Home() {
       setIsChecking(false)
     }
   }, [checkExistingGroup])
+
+  const handleToggleDebug = async () => {
+    if (debugOpen) {
+      setDebugOpen(false)
+      return
+    }
+    setDebugOpen(true)
+    setDebugLoading(true)
+    setDebugError('')
+    try {
+      const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') || '' : ''
+      const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') || '' : ''
+      const diagnostics = await getSupabaseDiagnostics({ playerName, groupId })
+      setDebugData(diagnostics)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+      setDebugError(message)
+    } finally {
+      setDebugLoading(false)
+    }
+  }
 
   const handleGroupSelected = (groupId: string, groupCode: string, playerName: string, role: 'spielleiter' | 'spieler') => {
     if (typeof window === 'undefined') return
@@ -181,6 +209,75 @@ export default function Home() {
             </p>
           </div>
         )}
+
+        <div className="mb-6">
+          <button
+            onClick={handleToggleDebug}
+            className="w-full px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors"
+          >
+            {debugOpen ? 'Debug ausblenden' : 'Debug anzeigen'}
+          </button>
+          {debugOpen && (
+            <div className="mt-3 rounded-lg border border-white/20 bg-white/5 p-4 text-xs text-white/80 space-y-3">
+              <div className="text-white font-semibold text-sm">Supabase Debug</div>
+              {debugLoading && <div>Debug-Daten werden geladen…</div>}
+              {debugError && <div className="text-red-300">Fehler: {debugError}</div>}
+              {!debugLoading && !debugError && (
+                <>
+                  <div>
+                    <span className="text-white/70">Supabase URL:</span> {supabaseUrl || '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">groupId:</span>{' '}
+                    {typeof window !== 'undefined' ? localStorage.getItem('groupId') || '—' : '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">playerName:</span>{' '}
+                    {typeof window !== 'undefined' ? localStorage.getItem('playerName') || '—' : '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">role:</span>{' '}
+                    {typeof window !== 'undefined' ? localStorage.getItem('userRole') || '—' : '—'}
+                  </div>
+                  <div>
+                    <span className="text-white/70">Connection:</span>{' '}
+                    {debugData?.connection?.success ? 'OK' : debugData?.connection?.error || 'Fehler'}
+                  </div>
+                  {debugData?.tables?.missing?.length > 0 && (
+                    <div>
+                      <span className="text-white/70">Fehlende Tabellen:</span>{' '}
+                      {debugData.tables.missing.join(', ')}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-white/70">Counts:</span>
+                    <div>groups: {debugData?.counts?.groups?.count ?? debugData?.counts?.groups?.error || '—'}</div>
+                    <div>
+                      group_members:{' '}
+                      {debugData?.counts?.groupMembers?.count ?? debugData?.counts?.groupMembers?.error || '—'}
+                    </div>
+                    <div>
+                      characters:{' '}
+                      {debugData?.counts?.characters?.count ?? debugData?.counts?.characters?.error || '—'}
+                    </div>
+                    {debugData?.counts?.groupCharacters && (
+                      <div>
+                        characters (groupId):{' '}
+                        {debugData.counts.groupCharacters.count ?? debugData.counts.groupCharacters.error || '—'}
+                      </div>
+                    )}
+                    {debugData?.counts?.playerCharacters && (
+                      <div>
+                        characters (playerName):{' '}
+                        {debugData.counts.playerCharacters.count ?? debugData.counts.playerCharacters.error || '—'}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="space-y-4">
           <button

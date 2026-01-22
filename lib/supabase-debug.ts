@@ -82,6 +82,56 @@ export const checkTables = async (): Promise<{ tables: string[]; missing: string
   return { tables: existing, missing }
 }
 
+type TableCountResult = {
+  count?: number
+  error?: string
+}
+
+const countTable = async (
+  table: string,
+  filters?: { column: string; value: string }
+): Promise<TableCountResult> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) {
+    return { error: 'Supabase-Client konnte nicht erstellt werden.' }
+  }
+  let query = supabase.from(table).select('*', { count: 'exact', head: true })
+  if (filters?.column && filters?.value) {
+    query = query.eq(filters.column, filters.value)
+  }
+  const { count, error } = await query
+  if (error) {
+    return { error: error.message || error.code || 'Unbekannter Fehler' }
+  }
+  return { count: count ?? 0 }
+}
+
+export const getSupabaseDiagnostics = async (params?: {
+  playerName?: string
+  groupId?: string
+}) => {
+  const connection = await testSupabaseConnection()
+  const tables = await checkTables()
+  const playerName = params?.playerName?.trim()
+  const groupId = params?.groupId?.trim()
+
+  const counts = {
+    groups: await countTable('groups'),
+    groupMembers: await countTable('group_members'),
+    characters: await countTable('characters'),
+    groupCharacters: groupId ? await countTable('characters', { column: 'group_id', value: groupId }) : undefined,
+    playerCharacters: playerName
+      ? await countTable('characters', { column: 'player_name', value: playerName })
+      : undefined,
+  }
+
+  return {
+    connection,
+    tables,
+    counts,
+  }
+}
+
 
 
 

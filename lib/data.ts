@@ -23,6 +23,12 @@ import {
 // Hybrid: Supabase wenn verfügbar, sonst localStorage
 let lastStorageError: string | null = null
 
+const emitStorageError = () => {
+  if (typeof window === 'undefined') return
+  if (!lastStorageError) return
+  window.dispatchEvent(new CustomEvent('storage-error', { detail: lastStorageError }))
+}
+
 export const getStorageError = () => lastStorageError
 export const clearStorageError = () => {
   lastStorageError = null
@@ -36,6 +42,7 @@ const safeSetItem = (key: string, value: string): boolean => {
     const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
     lastStorageError = `Lokaler Speicher ist voll oder blockiert. (${key}) ${message}`
     console.warn('Speicherfehler:', key, error)
+    emitStorageError()
     return false
   }
 }

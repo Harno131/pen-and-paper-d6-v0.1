@@ -92,12 +92,13 @@ export default function SpielerPage() {
   }, [router])
 
   const loadData = useCallback(async () => {
-    const name = localStorage.getItem('playerName') || ''
+    const name = (localStorage.getItem('playerName') || '').trim()
     
     // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
     const { getCharactersAsync } = await import('@/lib/data')
     const allCharacters = await getCharactersAsync()
-    const myCharacters = allCharacters.filter(c => c.playerName === name)
+    const normalizedName = name.toLowerCase()
+    const myCharacters = allCharacters.filter(c => (c.playerName || '').trim().toLowerCase() === normalizedName)
     setPlayerCharacters(myCharacters)
     
     // Wenn ein Charakter ausgewählt ist, aktualisiere ihn
@@ -144,9 +145,23 @@ export default function SpielerPage() {
 
     // Validiere Gruppen-Mitgliedschaft beim Laden
     validateGroupAccess(groupId, name, role)
-    setPlayerName(name)
+    setPlayerName(name.trim())
     loadData()
   }, [router, validateGroupAccess, loadData])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleStorageError = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail
+      if (detail) {
+        setStorageError(detail)
+      }
+    }
+    window.addEventListener('storage-error', handleStorageError as EventListener)
+    return () => {
+      window.removeEventListener('storage-error', handleStorageError as EventListener)
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

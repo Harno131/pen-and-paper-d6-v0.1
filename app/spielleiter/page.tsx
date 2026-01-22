@@ -409,6 +409,20 @@ export default function SpielleiterPage() {
     loadData()
   }, [router, validateGroupAccess, loadData])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleStorageError = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail
+      if (detail) {
+        setStorageError(detail)
+      }
+    }
+    window.addEventListener('storage-error', handleStorageError as EventListener)
+    return () => {
+      window.removeEventListener('storage-error', handleStorageError as EventListener)
+    }
+  }, [])
+
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
     const interval = setInterval(() => {

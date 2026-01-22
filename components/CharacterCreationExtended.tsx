@@ -613,19 +613,21 @@ export default function CharacterCreationExtended({
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
       <div className="container mx-auto max-w-6xl">
-        <div className="fixed top-4 right-4 z-50">
-          <div className={`px-4 py-2 rounded-lg border bg-slate-900/80 backdrop-blur-lg ${
-            remainingBlips >= 0 ? 'border-green-400 text-green-300' : 'border-red-400 text-red-300'
-          }`}>
-            Blips: {remainingBlips} / {totalBlipBudget}
+        {step === 'skills' && (
+          <div className="fixed top-4 right-4 z-50">
+            <div className={`px-4 py-2 rounded-lg border bg-slate-900/80 backdrop-blur-lg ${
+              remainingBlips >= 0 ? 'border-green-400 text-green-300' : 'border-red-400 text-red-300'
+            }`}>
+              Blips: {remainingBlips} / {totalBlipBudget}
+            </div>
+            <button
+              onClick={() => setSortAttributesByBlips((prev) => !prev)}
+              className="mt-2 w-full px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
+            >
+              {sortAttributesByBlips ? 'Attribute unsortiert' : 'Attribute nach Blibs sortieren'}
+            </button>
           </div>
-          <button
-            onClick={() => setSortAttributesByBlips((prev) => !prev)}
-            className="mt-2 w-full px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
-          >
-            {sortAttributesByBlips ? 'Attribute unsortiert' : 'Attribute nach Blibs sortieren'}
-          </button>
-        </div>
+        )}
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold text-white">
@@ -642,23 +644,6 @@ export default function CharacterCreationExtended({
               ))}
             </div>
           </div>
-          <div className="text-white/70 text-sm leading-relaxed mb-6">
-            <p>
-              Wir würfeln mit 6seitigen Würfeln (D6) gegen Schwierigkeitsgrade.
-              Je nach Begebenheit wird gegen die Attribute, gegen Fertigkeiten oder Spezialisierungen gewürfelt.
-            </p>
-            <p className="mt-2">
-              Zum Start kann jedes Attribut um bis zu {settings.maxAttributeDicePerAttribute}D,
-              jede Fertigkeit um bis zu {settings.maxSkillDicePerSkill}D und jede Spezialisierung
-              um bis zu {settings.maxBlibsPerSpecialization} Blibs gesteigert werden.
-              Die Kosten steigen konstant an.
-            </p>
-            <p className="mt-2">
-              Fertigkeiten oder Spezialisierungen können selber erstellt und auf alles angewandt werden
-              (z.B. Betrügen → Kartenspiel, Handwerk → Schmiedekunst, Fernkampf → Blasrohr).
-            </p>
-          </div>
-
           {/* Schritt 1: Grundinformationen */}
           {step === 'basics' && (
             <div className="space-y-6">
@@ -818,6 +803,22 @@ export default function CharacterCreationExtended({
           {/* Schritt 3: Fertigkeiten */}
           {step === 'skills' && (
             <div className="space-y-6">
+              <div className="text-white/70 text-sm leading-relaxed">
+                <p>
+                  Wir würfeln mit 6seitigen Würfeln (D6) gegen Schwierigkeitsgrade.
+                  Je nach Begebenheit wird gegen die Attribute, gegen Fertigkeiten oder Spezialisierungen gewürfelt.
+                </p>
+                <p className="mt-2">
+                  Zum Start kann jedes Attribut um bis zu {settings.maxAttributeDicePerAttribute}D,
+                  jede Fertigkeit um bis zu {settings.maxSkillDicePerSkill}D und jede Spezialisierung
+                  um bis zu {settings.maxBlibsPerSpecialization} Blibs gesteigert werden.
+                  Die Kosten steigen konstant an.
+                </p>
+                <p className="mt-2">
+                  Fertigkeiten oder Spezialisierungen können selber erstellt und auf alles angewandt werden
+                  (z.B. Betrügen → Kartenspiel, Handwerk → Schmiedekunst, Fernkampf → Blasrohr).
+                </p>
+              </div>
               <div className="space-y-6">
                 {orderedAttributes.map((attr) => {
                   const attributeValue = getAttributeValue(attr)
