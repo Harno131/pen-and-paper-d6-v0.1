@@ -245,14 +245,23 @@ export default function SpielerPage() {
     const handleInput = () => {
       lastInputAtRef.current = Date.now()
     }
+    const handlePointerDown = () => {
+      lastInputAtRef.current = Date.now()
+      isUserEditingRef.current = true
+      window.setTimeout(() => {
+        isUserEditingRef.current = false
+      }, 400)
+    }
     document.addEventListener('focusin', handleFocusIn)
     document.addEventListener('focusout', handleFocusOut)
     document.addEventListener('input', handleInput, true)
+    document.addEventListener('pointerdown', handlePointerDown, true)
     return () => {
       if (blurTimeout) window.clearTimeout(blurTimeout)
       document.removeEventListener('focusin', handleFocusIn)
       document.removeEventListener('focusout', handleFocusOut)
       document.removeEventListener('input', handleInput, true)
+      document.removeEventListener('pointerdown', handlePointerDown, true)
     }
   }, [])
 
