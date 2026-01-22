@@ -818,17 +818,19 @@ export default function CharacterCreationExtended({
           {/* Schritt 3: Fertigkeiten */}
           {step === 'skills' && (
             <div className="space-y-6">
-              {orderedAttributes.map((attr) => {
+              <div className="space-y-6">
+                {orderedAttributes.map((attr) => {
                   const attributeValue = getAttributeValue(attr)
                   const attrSkills = getSkillsForAttribute(attr)
                   if (attrSkills.length === 0) return null
 
                   const bonus = attributeBonuses[attr] || 0
                   const stepBonus = attributeStepBonuses[attr] || 0
+                  const isSelectedAttr = attrSkills.some(s => s.id === newSpecialization.skillId)
 
                   return (
                     <div key={attr} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                      <div className="grid grid-cols-[1fr_8rem_8rem_8rem] items-center gap-4 mb-3">
+                      <div className="grid grid-cols-4 items-center gap-4 mb-3">
                         <div className="flex items-center gap-3">
                           <h3 className="text-white font-semibold text-lg">{attr}</h3>
                         </div>
@@ -842,7 +844,7 @@ export default function CharacterCreationExtended({
                           Wert
                         </div>
                       </div>
-                      <div className="grid grid-cols-[1fr_8rem_8rem_8rem] items-center gap-4">
+                      <div className="grid grid-cols-4 items-center gap-4">
                         <div className="text-white/80 font-mono tabular-nums">
                           {attributeValue}
                         </div>
@@ -907,7 +909,7 @@ export default function CharacterCreationExtended({
                           )
                           return (
                             <div key={skill.id} className="bg-white/5 rounded p-3 border border-white/10">
-                              <div className="grid grid-cols-[1fr_8rem_8rem_8rem] items-center gap-4">
+                              <div className="grid grid-cols-4 items-center gap-4">
                                 <div className="flex items-center gap-3">
                                   <span className="text-white">{getSkillDisplayName(skill.name)}</span>
                                   {skill.isWeakened && (
@@ -972,7 +974,7 @@ export default function CharacterCreationExtended({
                                     const specValue = calculateSkillValue(attributeValue, bonus, totalBlibs, skill.isWeakened, learned)
 
                                     return (
-                                      <div key={spec.id} className="grid grid-cols-[1fr_8rem_8rem_8rem] items-center gap-4 bg-white/5 rounded p-2">
+                                      <div key={spec.id} className="grid grid-cols-4 items-center gap-4 bg-white/5 rounded p-2">
                                         <div className="pl-6">
                                           <span className="text-white">{spec.name}</span>
                                         </div>
@@ -1015,11 +1017,7 @@ export default function CharacterCreationExtended({
                       {/* Spezialisierung hinzufügen - ÜBER "Eigene Fertigkeit hinzufügen" */}
                       <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
                         <div className="text-white/90 text-sm font-medium mb-2">Eine Spezialisierung hinzufügen:</div>
-                        <div className="grid grid-cols-[1fr_8rem_8rem_8rem] items-center gap-4">
-                          {(() => {
-                            const isSelectedAttr = attrSkills.some(s => s.id === newSpecialization.skillId)
-                            return (
-                              <>
+                        <div className="grid grid-cols-4 items-center gap-4">
                           <input
                             type="text"
                             placeholder="Name der Spezialisierung..."
@@ -1065,14 +1063,11 @@ export default function CharacterCreationExtended({
                           >
                             Hinzufügen
                           </button>
-                              </>
-                            )
-                          })()}
                         </div>
                       </div>
                       
                       {/* Freie Zeile für eigene Fertigkeitsvorschläge */}
-                      <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-[1fr_8rem_8rem_8rem] items-center gap-4">
+                      <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-4 items-center gap-4">
                         <input
                           type="text"
                           placeholder="Eigene Fertigkeit hinzufügen..."
