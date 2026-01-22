@@ -142,7 +142,7 @@ export interface Bestiary {
   tags?: string[]
   attributes: { [key: string]: D6Value }
   maxHp: number
-  fallcrestTwist: string
+  fallcrestTwist?: string
   imageUrl?: string
   createdAt?: Date
   updatedAt?: Date

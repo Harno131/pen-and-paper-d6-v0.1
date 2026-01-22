@@ -74,7 +74,6 @@ export default function CharacterCreationExtended({
   const [profileImageSaved, setProfileImageSaved] = useState(false)
   const [visibleEquipment, setVisibleEquipment] = useState('')
   const [profileImageLoading, setProfileImageLoading] = useState(false)
-  const [portraitFallcrestFilter, setPortraitFallcrestFilter] = useState(false)
   const [profileImageError, setProfileImageError] = useState('')
 
   useEffect(() => {
@@ -281,7 +280,6 @@ export default function CharacterCreationExtended({
             equipment: equipmentText,
             topAttributes,
           },
-          fallcrestFilter: portraitFallcrestFilter,
         }),
       })
       const json = await response.json()
@@ -289,7 +287,9 @@ export default function CharacterCreationExtended({
         setProfileImageUrl(json.imageUrl)
         setProfileImageSaved(false)
       } else {
-        const reason = json?.error || 'Bild konnte nicht generiert werden.'
+        const reason = typeof json?.error === 'string'
+          ? json.error
+          : json?.details || 'Bild konnte nicht generiert werden.'
         setProfileImageError(reason)
       }
     } catch (error) {
@@ -1110,15 +1110,6 @@ export default function CharacterCreationExtended({
                   />
                 </div>
                 <div className="flex flex-col gap-4">
-                  <label className="flex items-center gap-2 text-white/80 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={portraitFallcrestFilter}
-                      onChange={(e) => setPortraitFallcrestFilter(e.target.checked)}
-                      className="rounded"
-                    />
-                    Fallcrest-Artefakt-Nässe aktivieren
-                  </label>
                   <button
                     onClick={generatePlaceholderProfileImage}
                     disabled={!canGenerateProfileImage || profileImageLoading}

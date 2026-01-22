@@ -219,11 +219,17 @@ export const getSharedImages = (): SharedImage[] => {
   return []
 }
 
-export const saveSharedImage = (image: SharedImage) => {
-  if (typeof window === 'undefined') return
-  const images = getSharedImages()
-  images.push(image)
-  localStorage.setItem('sharedImages', JSON.stringify(images))
+export const saveSharedImage = (image: SharedImage): boolean => {
+  if (typeof window === 'undefined') return false
+  try {
+    const images = getSharedImages()
+    images.push(image)
+    localStorage.setItem('sharedImages', JSON.stringify(images))
+    return true
+  } catch (error) {
+    console.warn('Fehler beim Speichern des Bildes:', error)
+    return false
+  }
 }
 
 export const getDiceRolls = (characterId?: string): DiceRoll[] => {

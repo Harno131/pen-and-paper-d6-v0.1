@@ -92,22 +92,31 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text()
-      return NextResponse.json({ error: errorText || 'Gemini-Bildgenerierung fehlgeschlagen.' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'Gemini-Bildgenerierung fehlgeschlagen.', details: errorText || 'Unbekannter Fehler.' },
+        { status: 500 }
+      )
     }
 
     const data = await response.json()
     const imageBytes =
       data?.generatedImages?.[0]?.image?.imageBytes ||
       data?.generatedImages?.[0]?.imageBytes ||
+      data?.images?.[0]?.bytesBase64Encoded ||
+      data?.images?.[0]?.imageBytes ||
       null
 
     if (!imageBytes) {
-      return NextResponse.json({ error: 'Keine Bilddaten erhalten.' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'Keine Bilddaten erhalten.', details: JSON.stringify(data || {}) },
+        { status: 500 }
+      )
     }
 
     const imageUrl = `data:image/png;base64,${imageBytes}`
     return NextResponse.json({ imageUrl, prompt })
   } catch (error) {
-    return NextResponse.json({ error: 'Bildgenerierung fehlgeschlagen' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+    return NextResponse.json({ error: 'Bildgenerierung fehlgeschlagen', details: message }, { status: 500 })
   }
 }

@@ -197,7 +197,7 @@ export const upsertBestiary = async (monster: Bestiary): Promise<boolean> => {
       skills: monster.abilities || [],
       inventory: [],
       max_hp: monster.maxHp || 1,
-      fallcrest_twist: monster.fallcrestTwist || '',
+      fallcrest_twist: monster.fallcrestTwist ?? '',
       image_url: monster.imageUrl || null,
       tags: monster.tags || [],
       updated_at: new Date().toISOString(),

@@ -82,7 +82,6 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
   const [portraitUrl, setPortraitUrl] = useState<string | null>(editingNpc?.profileImageUrl || null)
   const [portraitSaved, setPortraitSaved] = useState(!!editingNpc?.profileImageUrl)
   const [portraitLoading, setPortraitLoading] = useState(false)
-  const [portraitFallcrestFilter, setPortraitFallcrestFilter] = useState(true)
   const [portraitError, setPortraitError] = useState('')
   const [tagInput, setTagInput] = useState(
     editingNpc?.tags && editingNpc.tags.length > 0 ? editingNpc.tags.map(tag => `#${tag}`).join(' ') : ''
@@ -166,7 +165,6 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
             age: undefined,
             traits,
           },
-          fallcrestFilter: portraitFallcrestFilter,
         }),
       })
       const json = await response.json()
@@ -174,7 +172,9 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
         setPortraitUrl(json.imageUrl)
         setPortraitSaved(false)
       } else {
-        const reason = json?.error || 'Bild konnte nicht generiert werden.'
+        const reason = typeof json?.error === 'string'
+          ? json.error
+          : json?.details || 'Bild konnte nicht generiert werden.'
         setPortraitError(reason)
       }
     } catch (error) {
@@ -389,7 +389,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
 
           {/* Tags */}
           <div>
-            <label className="text-white/90 font-medium block mb-2">Tags (z.B. #personen #monster #fallcrest)</label>
+            <label className="text-white/90 font-medium block mb-2">Tags (z.B. #personen #monster #orte)</label>
             <input
               type="text"
               value={tagInput}
@@ -438,7 +438,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
               type="text"
               value={affiliation}
               onChange={(e) => setAffiliation(e.target.value)}
-              placeholder="z.B. 'Die Gischt', 'Stadtwache von Fallcrest'"
+              placeholder="z.B. 'Die Gischt', 'Stadtwache der Hafenstadt'"
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
           </div>
@@ -450,7 +450,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="z.B. 'Fallcrest', 'Mondsteinhalle'"
+              placeholder="z.B. 'Hafenstadt', 'Mondsteinhalle'"
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
           </div>
@@ -470,15 +470,6 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
           {/* Portrait */}
           <div className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-4">
             <div className="flex flex-col gap-3">
-              <label className="flex items-center gap-2 text-white/80 text-sm">
-                <input
-                  type="checkbox"
-                  checked={portraitFallcrestFilter}
-                  onChange={(e) => setPortraitFallcrestFilter(e.target.checked)}
-                  className="rounded"
-                />
-                Fallcrest-Artefakt-Nässe aktivieren
-              </label>
               <button
                 onClick={handleGeneratePortrait}
                 disabled={portraitLoading}

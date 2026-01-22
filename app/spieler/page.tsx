@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Character, JournalEntry, SharedImage } from '@/types'
 import { 
@@ -56,6 +56,7 @@ export default function SpielerPage() {
     startDate?: { year: number; month: number; day: number }
     realStartDate?: string
   } | null>(null)
+  const isUserEditingRef = useRef(false)
   const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
@@ -139,14 +140,43 @@ export default function SpielerPage() {
     loadData()
   }, [router, validateGroupAccess, loadData])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let blurTimeout: number | undefined
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName
+      return target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    }
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!isEditableTarget(event.target)) return
+      if (blurTimeout) window.clearTimeout(blurTimeout)
+      isUserEditingRef.current = true
+    }
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!isEditableTarget(event.target)) return
+      blurTimeout = window.setTimeout(() => {
+        isUserEditingRef.current = false
+      }, 200)
+    }
+    document.addEventListener('focusin', handleFocusIn)
+    document.addEventListener('focusout', handleFocusOut)
+    return () => {
+      if (blurTimeout) window.clearTimeout(blurTimeout)
+      document.removeEventListener('focusin', handleFocusIn)
+      document.removeEventListener('focusout', handleFocusOut)
+    }
+  }, [])
+
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
     const interval = setInterval(() => {
+      if (isUserEditingRef.current || showCharacterCreation) return
       loadData()
     }, 5000) // Alle 5 Sekunden
 
     return () => clearInterval(interval)
-  }, [loadData])
+  }, [loadData, showCharacterCreation])
 
   useEffect(() => {
     if (activeTab === 'journal' && typeof window !== 'undefined') {
@@ -1153,7 +1183,10 @@ export default function SpielerPage() {
                             setJournalIllustrationUrl(json.imageUrl)
                             setJournalIllustrationSaved(false)
                           } else {
-                            setJournalIllustrationError(json?.error || 'Illustration konnte nicht generiert werden.')
+                            const reason = typeof json?.error === 'string'
+                              ? json.error
+                              : json?.details || 'Illustration konnte nicht generiert werden.'
+                            setJournalIllustrationError(reason)
                           }
                         } catch (error) {
                           setJournalIllustrationError('Illustration konnte nicht generiert werden. Prüfe Internetverbindung und API-Key.')

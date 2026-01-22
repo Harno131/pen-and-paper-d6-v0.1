@@ -23,7 +23,7 @@ import {
   calculateCharacterPoints,
   calculateHitPoints,
 } from '@/lib/data'
-import { getGroupSettings, getGroupMembers, removePlayerFromGroup, getBestiary, upsertBestiary, removeBestiary } from '@/lib/supabase-data'
+import { getGroupSettings, getBestiary, upsertBestiary, removeBestiary } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
@@ -53,6 +53,7 @@ export default function SpielleiterPage() {
   const [deletedCharacters, setDeletedCharacters] = useState<DeletedCharacter[]>([])
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
   const [sharedImages, setSharedImages] = useState<SharedImage[]>([])
+  const [sharedImageError, setSharedImageError] = useState('')
   const [diceRolls, setDiceRolls] = useState<DiceRoll[]>([])
   const [newJournalEntry, setNewJournalEntry] = useState({ title: '', content: '' })
   const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<string>('Mittag')
@@ -83,7 +84,6 @@ export default function SpielleiterPage() {
     description: '',
     abilities: '',
     maxHp: 1,
-    fallcrestTwist: '',
     tags: '',
     attributes: { ...DEFAULT_MONSTER_ATTRIBUTES },
   })
@@ -91,7 +91,6 @@ export default function SpielleiterPage() {
   const [monsterImageSaved, setMonsterImageSaved] = useState(false)
   const [monsterImageLoading, setMonsterImageLoading] = useState(false)
   const [monsterImageError, setMonsterImageError] = useState('')
-  const [monsterFallcrestFilter, setMonsterFallcrestFilter] = useState(true)
   const [bestiaryTagFilter, setBestiaryTagFilter] = useState('')
   const [expandedMonsterId, setExpandedMonsterId] = useState<string | null>(null)
   const [settings, setSettings] = useState<CharacterCreationSettings>(getCharacterCreationSettings())
@@ -100,10 +99,10 @@ export default function SpielleiterPage() {
     realStartDate?: string
   } | null>(null)
   const [hiddenCharacters, setHiddenCharacters] = useState<Set<string>>(new Set())
-  const [groupMembers, setGroupMembers] = useState<any[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const journalBottomRef = useRef<HTMLDivElement>(null)
   const skillDescriptionRef = useRef<HTMLTextAreaElement>(null)
+  const isUserEditingRef = useRef(false)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
@@ -141,25 +140,8 @@ export default function SpielleiterPage() {
 
   const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
 
-  const displayMembers = useMemo(() => {
-    const memberMap = new Map<string, any>()
-    groupMembers.forEach((member) => {
-      memberMap.set(member.player_name, member)
-    })
-    characters
-      .filter((char) => !char.deletedDate && !char.isNPC)
-      .forEach((char) => {
-        if (!memberMap.has(char.playerName)) {
-          memberMap.set(char.playerName, {
-            id: `virtual-${char.playerName}`,
-            player_name: char.playerName,
-            role: 'spieler',
-            isVirtual: true,
-          })
-        }
-      })
-    return Array.from(memberMap.values())
-  }, [groupMembers, characters])
+  const [gmName, setGmName] = useState('')
+  const gmNameLabel = gmName.trim() || 'Spielleiter'
 
   const resolveRealStartDate = useMemo(() => {
     return fantasyCalendarStart?.realStartDate
@@ -285,6 +267,42 @@ export default function SpielleiterPage() {
   }
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const storedGmName = localStorage.getItem('gmName')
+    if (storedGmName) {
+      setGmName(storedGmName)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let blurTimeout: number | undefined
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName
+      return target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    }
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!isEditableTarget(event.target)) return
+      if (blurTimeout) window.clearTimeout(blurTimeout)
+      isUserEditingRef.current = true
+    }
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!isEditableTarget(event.target)) return
+      blurTimeout = window.setTimeout(() => {
+        isUserEditingRef.current = false
+      }, 200)
+    }
+    document.addEventListener('focusin', handleFocusIn)
+    document.addEventListener('focusout', handleFocusOut)
+    return () => {
+      if (blurTimeout) window.clearTimeout(blurTimeout)
+      document.removeEventListener('focusin', handleFocusIn)
+      document.removeEventListener('focusout', handleFocusOut)
+    }
+  }, [])
+
+  useEffect(() => {
     if (journalTimeJump !== 'custom') return
     if (!customJumpDate) {
       const nextDay = addFantasyDays(baseFantasyDate, 1)
@@ -346,8 +364,6 @@ export default function SpielleiterPage() {
     // Lade Gruppenmitglieder und Kalender-Startdaten
     const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
     if (currentGroupId) {
-      const members = await getGroupMembers(currentGroupId)
-      setGroupMembers(members)
       const groupSettings = await getGroupSettings(currentGroupId)
       if (groupSettings?.fantasyCalendar) {
         setFantasyCalendarStart({
@@ -382,11 +398,12 @@ export default function SpielleiterPage() {
   // Automatisches Neuladen alle 5 Sekunden (Polling für Echtzeit-Synchronisation)
   useEffect(() => {
     const interval = setInterval(() => {
+      if (isUserEditingRef.current || showNpcCreation || Boolean(editingMonster)) return
       loadData()
     }, 5000) // Alle 5 Sekunden
 
     return () => clearInterval(interval)
-  }, [groupId, loadData])
+  }, [groupId, loadData, showNpcCreation, editingMonster])
 
   useEffect(() => {
     if (activeTab === 'journal') {
@@ -424,13 +441,11 @@ export default function SpielleiterPage() {
       description: '',
       abilities: '',
       maxHp: 1,
-      fallcrestTwist: '',
       tags: '',
       attributes: { ...DEFAULT_MONSTER_ATTRIBUTES },
     })
     setMonsterImageUrl(null)
     setMonsterImageSaved(false)
-    setMonsterFallcrestFilter(true)
   }
 
   const handleGenerateMonsterImage = async () => {
@@ -447,7 +462,6 @@ export default function SpielleiterPage() {
             monsterType: monsterForm.type,
             abilities: monsterForm.abilities.split(/[,\n;]/).map(a => a.trim()).filter(Boolean),
           },
-          fallcrestFilter: monsterFallcrestFilter,
         }),
       })
       const json = await response.json()
@@ -455,7 +469,10 @@ export default function SpielleiterPage() {
         setMonsterImageUrl(json.imageUrl)
         setMonsterImageSaved(false)
       } else {
-        setMonsterImageError(json?.error || 'Bild konnte nicht generiert werden.')
+        const reason = typeof json?.error === 'string'
+          ? json.error
+          : json?.details || 'Bild konnte nicht generiert werden.'
+        setMonsterImageError(reason)
       }
     } catch (error) {
       setMonsterImageError('Bildgenerierung fehlgeschlagen. Prüfe Internetverbindung und API-Key.')
@@ -467,10 +484,6 @@ export default function SpielleiterPage() {
   const handleSaveMonster = async () => {
     if (!monsterForm.name.trim()) {
       alert('Bitte gib einen Namen an.')
-      return
-    }
-    if (!monsterForm.fallcrestTwist.trim()) {
-      alert('Bitte trage einen Fallcrest-Twist ein.')
       return
     }
     const abilities = monsterForm.abilities.split(/[,\n;]/).map(a => a.trim()).filter(Boolean)
@@ -490,7 +503,7 @@ export default function SpielleiterPage() {
       tags,
       attributes,
       maxHp: Number(monsterForm.maxHp) || 1,
-      fallcrestTwist: monsterForm.fallcrestTwist.trim(),
+      fallcrestTwist: '',
       imageUrl: monsterImageSaved ? monsterImageUrl || undefined : undefined,
     }
     const success = await upsertBestiary(monster)
@@ -521,6 +534,7 @@ export default function SpielleiterPage() {
   }
 
   const handleShareImage = () => {
+    setSharedImageError('')
     if (!newImage.url.trim()) {
       alert('Bitte wähle ein Bild aus oder gib eine URL ein')
       return
@@ -531,13 +545,17 @@ export default function SpielleiterPage() {
       url: newImage.url,
       title: newImage.title || undefined,
       description: newImage.description || undefined,
-      sentBy: 'Spielleiter',
+      sentBy: gmNameLabel,
       timestamp: new Date(),
     }
 
+    const success = saveSharedImage(image)
+    if (!success) {
+      setSharedImageError('Bild konnte nicht gespeichert werden. Bitte kleinere Datei wählen oder Speicher prüfen.')
+      return
+    }
     const images = [...sharedImages, image]
     setSharedImages(images)
-    saveSharedImage(image)
     setNewImage({ title: '', description: '', url: '' })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -553,7 +571,7 @@ export default function SpielleiterPage() {
     const timeOfDay = editingEntry?.timeOfDay || resolvedJournalDate.timeOfDay
 
     // Bestimme Autor (Spielleiter bzw. vorhandener Eintrag)
-    const author = editingEntry?.author || 'Spielleiter'
+    const author = editingEntry?.author || gmNameLabel
     const characterId = editingEntry?.characterId
 
     // Extrahiere Titel aus Content (alles vor dem ersten Doppelpunkt)
@@ -1071,7 +1089,7 @@ export default function SpielleiterPage() {
                                                   }
 
                                                   const playerName = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
-                                                  const author = playerName || 'Spielleiter'
+                                                  const author = playerName || gmNameLabel
                                                   
                                                   // Erstelle Tagebuch-Eintrag ohne Geheim-Attribute
                                                   const publicInfo = [
@@ -1356,7 +1374,7 @@ export default function SpielleiterPage() {
                               type="text"
                               value={npcTagFilter}
                               onChange={(e) => setNpcTagFilter(e.target.value)}
-                              placeholder="Tag filtern (z.B. #fallcrest)"
+                              placeholder="Tag filtern (z.B. #personen)"
                               className="w-full md:w-72 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
                             />
                           </div>
@@ -1414,7 +1432,7 @@ export default function SpielleiterPage() {
                                             fantasyDate = realDateToFantasyDate(now)
                                           }
 
-                                          const author = 'Spielleiter'
+                                          const author = gmNameLabel
                                           
                                           const publicInfo = [
                                             `Name: ${npc.name}`,
@@ -1894,12 +1912,12 @@ export default function SpielleiterPage() {
                 </button>
               </div>
               <div>
-                <label className="text-white/80 text-sm mb-2 block">Tag-Suche (z.B. #fallcrest)</label>
+                <label className="text-white/80 text-sm mb-2 block">Tag-Suche (z.B. #orte)</label>
                 <input
                   type="text"
                   value={journalTagFilter}
                   onChange={(e) => setJournalTagFilter(e.target.value)}
-                  placeholder="#fallcrest"
+                  placeholder="#orte"
                   className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
               </div>
@@ -2152,7 +2170,10 @@ export default function SpielleiterPage() {
                             setJournalIllustrationUrl(json.imageUrl)
                             setJournalIllustrationSaved(false)
                           } else {
-                            setJournalIllustrationError(json?.error || 'Illustration konnte nicht generiert werden.')
+                            const reason = typeof json?.error === 'string'
+                              ? json.error
+                              : json?.details || 'Illustration konnte nicht generiert werden.'
+                            setJournalIllustrationError(reason)
                           }
                         } catch (error) {
                           setJournalIllustrationError('Illustration konnte nicht generiert werden. Prüfe Internetverbindung und API-Key.')
@@ -2412,6 +2433,11 @@ export default function SpielleiterPage() {
                 >
                   Bild senden
                 </button>
+                {sharedImageError && (
+                  <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
+                    {sharedImageError}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2740,7 +2766,7 @@ export default function SpielleiterPage() {
                   />
                   <input
                     type="text"
-                    placeholder="Tags mit # (z.B. #fallcrest #nebel)"
+                    placeholder="Tags mit # (z.B. #monster #orte)"
                     value={monsterForm.tags}
                     onChange={(e) => setMonsterForm({ ...monsterForm, tags: e.target.value })}
                     className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
@@ -2755,16 +2781,6 @@ export default function SpielleiterPage() {
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                   />
                 </div>
-                <div className="mt-4">
-                  <textarea
-                    placeholder="Fallcrest-Twist (Bezug zu Nebel, Dunst, Artefakten)"
-                    value={monsterForm.fallcrestTwist}
-                    onChange={(e) => setMonsterForm({ ...monsterForm, fallcrestTwist: e.target.value })}
-                    rows={2}
-                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  />
-                </div>
-
                 <div className="mt-4">
                   <h4 className="text-white/90 font-semibold mb-2">Attribute</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2788,15 +2804,6 @@ export default function SpielleiterPage() {
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  <label className="flex items-center gap-2 text-white/80 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={monsterFallcrestFilter}
-                      onChange={(e) => setMonsterFallcrestFilter(e.target.checked)}
-                      className="rounded"
-                    />
-                    Fallcrest-Artefakt-Nässe aktivieren
-                  </label>
                   <button
                     onClick={handleGenerateMonsterImage}
                     disabled={monsterImageLoading || !monsterForm.name.trim()}
@@ -2872,7 +2879,7 @@ export default function SpielleiterPage() {
                   type="text"
                   value={bestiaryTagFilter}
                   onChange={(e) => setBestiaryTagFilter(e.target.value)}
-                  placeholder="Tag filtern (z.B. #fallcrest)"
+                  placeholder="Tag filtern (z.B. #monster)"
                   className="w-full md:w-72 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
               </div>
@@ -2918,11 +2925,6 @@ export default function SpielleiterPage() {
                               ))}
                             </div>
                           )}
-                          {monster.fallcrestTwist && (
-                            <p className="text-white/60 mt-3">
-                              <span className="text-white/80">Fallcrest-Twist:</span> {monster.fallcrestTwist}
-                            </p>
-                          )}
                           {expandedMonsterId === monster.id && (
                             <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-white/80">
                               {Object.entries(monster.attributes || {}).map(([key, value]) => (
@@ -2965,7 +2967,6 @@ export default function SpielleiterPage() {
                               description: monster.description || '',
                               abilities: (monster.abilities || []).join(', '),
                               maxHp: monster.maxHp || 1,
-                              fallcrestTwist: monster.fallcrestTwist || '',
                               tags: (monster.tags || []).map(tag => `#${tag}`).join(' '),
                               attributes: { ...DEFAULT_MONSTER_ATTRIBUTES, ...(monster.attributes || {}) },
                             })
@@ -3001,85 +3002,36 @@ export default function SpielleiterPage() {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {/* Spieler verwalten */}
+            {/* Spielleiter-Name */}
             {groupId && (
               <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-xl">
-                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-                  <span className="text-3xl">👥</span>
-                  <span>Spieler verwalten</span>
+                <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                  <span className="text-3xl">🧙</span>
+                  <span>Spielleiter-Name</span>
                 </h2>
-                <div className="space-y-4">
-                  {displayMembers.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-white/60 text-lg">Keine Spieler in dieser Gruppe.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {displayMembers.map((member) => {
-                        const playerCharacters = characters.filter(c => c.playerName === member.player_name && !c.deletedDate)
-                        const isGM = member.role === 'spielleiter'
-                        
-                        return (
-                          <div
-                            key={member.id}
-                            className="bg-white/5 backdrop-blur-sm rounded-xl p-5 border border-white/10 hover:border-white/20 hover:bg-white/10 transition-all duration-300 shadow-lg hover:shadow-xl"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-3 mb-2 flex-wrap">
-                                  {!isGM && (
-                                    <span className="text-white font-bold text-lg">
-                                      {member.player_name}
-                                    </span>
-                                  )}
-                                  {isGM && (
-                                    <span className="text-xs bg-gradient-to-r from-purple-500/30 to-indigo-500/30 text-purple-200 px-3 py-1.5 rounded-full border border-purple-400/30 backdrop-blur-sm font-semibold shadow-lg">
-                                      ✨ Spielleiter
-                                    </span>
-                                  )}
-                                  <span className="text-white/50 text-sm font-medium">
-                                    ({playerCharacters.length} Charakter{playerCharacters.length !== 1 ? 'e' : ''})
-                                  </span>
-                                </div>
-                                {playerCharacters.length > 0 && (
-                                  <div className="mt-3 pt-3 border-t border-white/10">
-                                    <div className="flex flex-wrap gap-2">
-                                      {playerCharacters.map((c, idx) => (
-                                        <span
-                                          key={c.id}
-                                          className="text-white/80 text-sm px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/10 hover:border-white/20 transition-all duration-200"
-                                        >
-                                          {c.name}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                              {!isGM && (
-                                <button
-                                  onClick={async () => {
-                                    if (confirm(`Möchtest du ${member.player_name} wirklich aus der Gruppe entfernen? Alle Charaktere werden gelöscht.`)) {
-                                      const success = await removePlayerFromGroup(groupId!, member.id, member.player_name)
-                                      if (success) {
-                                        await loadData()
-                                        alert(`${member.player_name} wurde aus der Gruppe entfernt.`)
-                                      } else {
-                                        alert('Fehler beim Entfernen des Spielers.')
-                                      }
-                                    }
-                                  }}
-                                  className="px-5 py-2.5 bg-gradient-to-r from-red-600/80 to-red-700/80 hover:from-red-500 hover:to-red-600 text-white rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-red-500/50 hover:scale-105 border border-red-400/30 backdrop-blur-sm flex-shrink-0"
-                                >
-                                  🗑️ Entfernen
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                <p className="text-white/70 mb-4">
+                  Dieser Name wird als Autor für Tagebuch-Einträge genutzt.
+                </p>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <input
+                    type="text"
+                    value={gmName}
+                    onChange={(e) => setGmName(e.target.value)}
+                    placeholder="Spielleiter-Name"
+                    className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  />
+                  <button
+                    onClick={() => {
+                      const nextName = gmName.trim() || 'Spielleiter'
+                      setGmName(nextName)
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('gmName', nextName)
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    Speichern
+                  </button>
                 </div>
               </div>
             )}
