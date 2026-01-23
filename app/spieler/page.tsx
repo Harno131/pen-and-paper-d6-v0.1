@@ -19,6 +19,7 @@ import {
 } from '@/lib/data'
 import { getGroupSettings } from '@/lib/supabase-data'
 import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
+import { createSupabaseClient } from '@/lib/supabase'
 import { calculateSkillValue } from '@/lib/skills'
 import { formatD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, TIMES_OF_DAY, getSpecialEvent, getMonthInfo } from '@/lib/fantasy-calendar'
@@ -52,7 +53,9 @@ export default function SpielerPage() {
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
+  const [isSavingJournal, setIsSavingJournal] = useState(false)
   const [storageError, setStorageError] = useState('')
+  const [showSyncIndicator, setShowSyncIndicator] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugLoading, setDebugLoading] = useState(false)
   const [debugData, setDebugData] = useState<any | null>(null)
@@ -68,6 +71,7 @@ export default function SpielerPage() {
   } | null>(null)
   const isUserEditingRef = useRef(false)
   const lastInputAtRef = useRef(0)
+  const syncIndicatorTimeoutRef = useRef<number | null>(null)
   const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
@@ -288,6 +292,41 @@ export default function SpielerPage() {
   }, [activeTab])
 
   useEffect(() => {
+    const supabase = createSupabaseClient()
+    if (!supabase || !groupId) return
+    const channel = supabase.channel(`realtime-group-${groupId}`)
+    const handleRealtimeChange = () => {
+      if (showCharacterCreation) return
+      if (isUserEditingRef.current) return
+      loadData()
+      setShowSyncIndicator(true)
+      if (syncIndicatorTimeoutRef.current) {
+        window.clearTimeout(syncIndicatorTimeoutRef.current)
+      }
+      syncIndicatorTimeoutRef.current = window.setTimeout(() => {
+        setShowSyncIndicator(false)
+      }, 1500)
+    }
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'characters', filter: `group_id=eq.${groupId}` },
+      handleRealtimeChange
+    )
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'journal_entries', filter: `group_id=eq.${groupId}` },
+      handleRealtimeChange
+    )
+    channel.subscribe()
+    return () => {
+      if (syncIndicatorTimeoutRef.current) {
+        window.clearTimeout(syncIndicatorTimeoutRef.current)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [groupId, loadData, showCharacterCreation])
+
+  useEffect(() => {
     if (editingEntry?.illustrationUrl) {
       setJournalIllustrationUrl(editingEntry.illustrationUrl)
       setJournalIllustrationSaved(true)
@@ -319,6 +358,8 @@ export default function SpielerPage() {
 
   const handleAddJournalEntry = async () => {
     if (!newJournalEntry.content.trim()) return
+    if (isSavingJournal) return
+    setIsSavingJournal(true)
 
     const name = localStorage.getItem('playerName') || 'Unbekannt'
     const now = new Date()
@@ -356,23 +397,27 @@ export default function SpielerPage() {
       timeOfDay: selectedTimeOfDay as any,
     }
 
-    if (editingEntry) {
-      // Aktualisiere bestehenden Eintrag
-      const updatedEntries = journalEntries.map(e => e.id === editingEntry.id ? entry : e)
-      setJournalEntries(updatedEntries)
-      await saveJournalEntry(entry)
-      setEditingEntry(null)
-    } else {
-      // Neuer Eintrag
-      const entries = [...journalEntries, entry]
-      setJournalEntries(entries)
-      await saveJournalEntry(entry)
+    try {
+      if (editingEntry) {
+        // Aktualisiere bestehenden Eintrag
+        const updatedEntries = journalEntries.map(e => e.id === editingEntry.id ? entry : e)
+        setJournalEntries(updatedEntries)
+        await saveJournalEntry(entry)
+        setEditingEntry(null)
+      } else {
+        // Neuer Eintrag
+        const entries = [...journalEntries, entry]
+        setJournalEntries(entries)
+        await saveJournalEntry(entry)
+      }
+      
+      setNewJournalEntry({ title: '', content: '' })
+      setSelectedTimeOfDay('Mittag')
+      setJournalIllustrationUrl(null)
+      setJournalIllustrationSaved(false)
+    } finally {
+      setIsSavingJournal(false)
     }
-    
-    setNewJournalEntry({ title: '', content: '' })
-    setSelectedTimeOfDay('Mittag')
-    setJournalIllustrationUrl(null)
-    setJournalIllustrationSaved(false)
   }
 
   const handleAlignmentSelect = (row: number, col: number) => {
@@ -444,6 +489,13 @@ export default function SpielerPage() {
     }, 100)
   }
 
+  const handleForceRefresh = async () => {
+    if (!confirm('Cache jetzt löschen und Daten neu laden?')) return
+    const keys = ['characters', 'journalEntries', 'sharedImages', 'availableSkills', 'diceRolls']
+    keys.forEach((key) => localStorage.removeItem(key))
+    await loadData()
+  }
+
   // Wenn Character-Erstellung angezeigt werden soll
   if (showCharacterCreation) {
     return (
@@ -469,16 +521,28 @@ export default function SpielerPage() {
               {playerCharacters.length} Charakter{playerCharacters.length !== 1 ? 'e' : ''}
             </p>
           </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem('userRole')
-              localStorage.removeItem('playerName')
-              router.push('/')
-            }}
-            className="text-white/70 hover:text-white"
-          >
-            Abmelden
-          </button>
+          {showSyncIndicator && (
+            <div className="text-green-400 text-sm font-semibold">✓ Daten synchronisiert</div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleForceRefresh}
+              className="text-white/70 hover:text-white"
+              title="Force-Refresh"
+            >
+              🔄
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('userRole')
+                localStorage.removeItem('playerName')
+                router.push('/')
+              }}
+              className="text-white/70 hover:text-white"
+            >
+              Abmelden
+            </button>
+          </div>
         </div>
         {storageError && (
           <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200">
@@ -1448,9 +1512,10 @@ export default function SpielerPage() {
                 <div className="flex gap-3">
                   <button
                     onClick={handleAddJournalEntry}
-                    className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                    disabled={isSavingJournal}
+                    className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-semibold transition-colors"
                   >
-                    {editingEntry ? 'Speichern' : 'Eintrag hinzufügen'}
+                    {isSavingJournal ? 'Speichere...' : (editingEntry ? 'Speichern' : 'Eintrag hinzufügen')}
                   </button>
                   {editingEntry && (
                     <button

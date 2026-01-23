@@ -36,6 +36,7 @@ import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
 import NameGenerator from '@/components/NameGenerator'
 import NpcCreationExtended from '@/components/NpcCreationExtended'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
+import { createSupabaseClient } from '@/lib/supabase'
 
 const BESTIARY_ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'] as const
 const DEFAULT_MONSTER_ATTRIBUTES = {
@@ -70,6 +71,8 @@ export default function SpielleiterPage() {
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
+  const [isSavingJournal, setIsSavingJournal] = useState(false)
+  const [showSyncIndicator, setShowSyncIndicator] = useState(false)
   const [storageError, setStorageError] = useState('')
   const [rewardGroupBlips, setRewardGroupBlips] = useState('')
   const [rewardSingleBlips, setRewardSingleBlips] = useState('')
@@ -108,6 +111,7 @@ export default function SpielleiterPage() {
   const skillDescriptionRef = useRef<HTMLTextAreaElement>(null)
   const isUserEditingRef = useRef(false)
   const lastInputAtRef = useRef(0)
+  const syncIndicatorTimeoutRef = useRef<number | null>(null)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
@@ -449,6 +453,41 @@ export default function SpielleiterPage() {
   }, [groupId, loadData, showNpcCreation, editingMonster])
 
   useEffect(() => {
+    const supabase = createSupabaseClient()
+    if (!supabase || !groupId) return
+    const channel = supabase.channel(`realtime-group-${groupId}`)
+    const handleRealtimeChange = () => {
+      if (showNpcCreation || Boolean(editingMonster)) return
+      if (isUserEditingRef.current) return
+      loadData()
+      setShowSyncIndicator(true)
+      if (syncIndicatorTimeoutRef.current) {
+        window.clearTimeout(syncIndicatorTimeoutRef.current)
+      }
+      syncIndicatorTimeoutRef.current = window.setTimeout(() => {
+        setShowSyncIndicator(false)
+      }, 1500)
+    }
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'characters', filter: `group_id=eq.${groupId}` },
+      handleRealtimeChange
+    )
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'journal_entries', filter: `group_id=eq.${groupId}` },
+      handleRealtimeChange
+    )
+    channel.subscribe()
+    return () => {
+      if (syncIndicatorTimeoutRef.current) {
+        window.clearTimeout(syncIndicatorTimeoutRef.current)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [groupId, loadData, showNpcCreation, editingMonster])
+
+  useEffect(() => {
     if (activeTab === 'journal') {
       setTimeout(() => {
         journalBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -613,6 +652,8 @@ export default function SpielleiterPage() {
 
   const handleAddJournalEntry = async () => {
     if (!newJournalEntry.content.trim()) return
+    if (isSavingJournal) return
+    setIsSavingJournal(true)
 
     const now = new Date()
     const resolvedJournalDate = previewJournalDate
@@ -643,24 +684,28 @@ export default function SpielleiterPage() {
       timeOfDay: timeOfDay as any,
     }
 
-    if (editingEntry) {
-      // Aktualisiere bestehenden Eintrag
-      const updatedEntries = journalEntries.map(e => e.id === editingEntry.id ? entry : e)
-      setJournalEntries(updatedEntries)
-      // Speichere in Supabase/localStorage
-      await saveJournalEntry(entry)
-      setEditingEntry(null)
-    } else {
-      // Neuer Eintrag
-      const entries = [...journalEntries, entry]
-      setJournalEntries(entries)
-      await saveJournalEntry(entry)
+    try {
+      if (editingEntry) {
+        // Aktualisiere bestehenden Eintrag
+        const updatedEntries = journalEntries.map(e => e.id === editingEntry.id ? entry : e)
+        setJournalEntries(updatedEntries)
+        // Speichere in Supabase/localStorage
+        await saveJournalEntry(entry)
+        setEditingEntry(null)
+      } else {
+        // Neuer Eintrag
+        const entries = [...journalEntries, entry]
+        setJournalEntries(entries)
+        await saveJournalEntry(entry)
+      }
+      
+      setNewJournalEntry({ title: '', content: '' })
+      setSelectedTimeOfDay('Mittag')
+      setJournalIllustrationUrl(null)
+      setJournalIllustrationSaved(false)
+    } finally {
+      setIsSavingJournal(false)
     }
-    
-    setNewJournalEntry({ title: '', content: '' })
-    setSelectedTimeOfDay('Mittag')
-    setJournalIllustrationUrl(null)
-    setJournalIllustrationSaved(false)
   }
 
   const updateCharacterAttribute = (
@@ -704,6 +749,13 @@ export default function SpielleiterPage() {
     saveCharacters(updated)
   }
 
+  const handleForceRefresh = async () => {
+    if (!confirm('Cache jetzt löschen und Daten neu laden?')) return
+    const keys = ['characters', 'journalEntries', 'sharedImages', 'availableSkills', 'diceRolls', 'bestiary']
+    keys.forEach((key) => localStorage.removeItem(key))
+    await loadData()
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto px-4 py-8">
@@ -717,15 +769,27 @@ export default function SpielleiterPage() {
               {characters.length} Spieler • {diceRolls.length} Würfelwürfe
             </p>
           </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem('userRole')
-              router.push('/')
-            }}
-            className="text-white/70 hover:text-white"
-          >
-            Abmelden
-          </button>
+          {showSyncIndicator && (
+            <div className="text-green-400 text-sm font-semibold">✓ Daten synchronisiert</div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleForceRefresh}
+              className="text-white/70 hover:text-white"
+              title="Force-Refresh"
+            >
+              🔄
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('userRole')
+                router.push('/')
+              }}
+              className="text-white/70 hover:text-white"
+            >
+              Abmelden
+            </button>
+          </div>
         </div>
         {storageError && (
           <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200">
@@ -2300,9 +2364,10 @@ export default function SpielleiterPage() {
                 <div className="flex gap-3">
                   <button
                     onClick={handleAddJournalEntry}
-                    className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                      disabled={isSavingJournal}
+                      className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-semibold transition-colors"
                   >
-                    {editingEntry ? 'Speichern' : 'Eintrag hinzufügen'}
+                      {isSavingJournal ? 'Speichere...' : (editingEntry ? 'Speichern' : 'Eintrag hinzufügen')}
                   </button>
                   {editingEntry && (
                     <button

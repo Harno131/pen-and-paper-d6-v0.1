@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const revalidate = 0
 import * as fs from 'fs'
 import * as path from 'path'
 import { Character } from '@/types'
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
     if (!groupId) {
       return NextResponse.json(
         { error: 'groupId ist erforderlich' },
-        { status: 400 }
+        { status: 400, headers: { 'Cache-Control': 'no-store' } }
       )
     }
     
@@ -84,12 +86,15 @@ export async function GET(request: NextRequest) {
       deletedDate: char.deletedDate ? new Date(char.deletedDate).toISOString() : undefined,
     }))
     
-    return NextResponse.json({ characters: allCharacters })
+    return NextResponse.json(
+      { characters: allCharacters },
+      { headers: { 'Cache-Control': 'no-store' } }
+    )
   } catch (error) {
     console.error('Fehler beim Laden der Charaktere:', error)
     return NextResponse.json(
       { error: 'Fehler beim Laden der Charaktere' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     )
   }
 }
@@ -142,18 +147,21 @@ export async function POST(request: NextRequest) {
     )
     
     if (success1 && success2 && success3) {
-      return NextResponse.json({ success: true })
+      return NextResponse.json(
+        { success: true },
+        { headers: { 'Cache-Control': 'no-store' } }
+      )
     } else {
       return NextResponse.json(
         { error: 'Fehler beim Speichern der Charaktere' },
-        { status: 500 }
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )
     }
   } catch (error) {
     console.error('Fehler beim Speichern der Charaktere:', error)
     return NextResponse.json(
       { error: 'Fehler beim Speichern der Charaktere' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     )
   }
 }

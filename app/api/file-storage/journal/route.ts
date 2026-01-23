@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const revalidate = 0
 import * as fs from 'fs'
 import * as path from 'path'
 import { JournalEntry } from '@/types'
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
     if (!groupId) {
       return NextResponse.json(
         { error: 'groupId ist erforderlich' },
-        { status: 400 }
+        { status: 400, headers: { 'Cache-Control': 'no-store' } }
       )
     }
     
@@ -70,12 +72,15 @@ export async function GET(request: NextRequest) {
         : new Date(entry.timestamp).toISOString(),
     }))
     
-    return NextResponse.json({ entries: entriesWithDates })
+    return NextResponse.json(
+      { entries: entriesWithDates },
+      { headers: { 'Cache-Control': 'no-store' } }
+    )
   } catch (error) {
     console.error('Fehler beim Laden der Journal-Einträge:', error)
     return NextResponse.json(
       { error: 'Fehler beim Laden der Journal-Einträge' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     )
   }
 }
@@ -110,18 +115,21 @@ export async function POST(request: NextRequest) {
     )
     
     if (success) {
-      return NextResponse.json({ success: true })
+      return NextResponse.json(
+        { success: true },
+        { headers: { 'Cache-Control': 'no-store' } }
+      )
     } else {
       return NextResponse.json(
         { error: 'Fehler beim Speichern der Journal-Einträge' },
-        { status: 500 }
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )
     }
   } catch (error) {
     console.error('Fehler beim Speichern der Journal-Einträge:', error)
     return NextResponse.json(
       { error: 'Fehler beim Speichern der Journal-Einträge' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     )
   }
 }

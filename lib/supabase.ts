@@ -10,7 +10,11 @@ export const createSupabaseClient = () => {
     return null
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey)
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      fetch: (input, init = {}) => fetch(input, { ...init, cache: 'no-store' }),
+    },
+  })
 }
 
 // Supabase Client für Server-Side (mit Service Role Key)
@@ -23,6 +27,9 @@ export const createSupabaseAdmin = () => {
   }
 
   return createClient(supabaseUrl, supabaseServiceKey, {
+    global: {
+      fetch: (input, init = {}) => fetch(input, { ...init, cache: 'no-store' }),
+    },
     auth: {
       autoRefreshToken: false,
       persistSession: false

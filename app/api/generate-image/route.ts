@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+export const revalidate = 0
+
 type GenerateImageRequest = {
   type: 'portrait' | 'event' | 'monster'
   data: Record<string, any>
@@ -68,14 +70,20 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as GenerateImageRequest
     if (!body?.type || !body?.data) {
-      return NextResponse.json({ error: 'type und data sind erforderlich' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'type und data sind erforderlich' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } }
+      )
     }
 
     const prompt = buildPrompt(body)
     const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY fehlt. Bitte in der Umgebung setzen.' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'GEMINI_API_KEY fehlt. Bitte in der Umgebung setzen.' },
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
+      )
     }
 
     const response = await fetch(
@@ -94,7 +102,7 @@ export async function POST(request: Request) {
       const errorText = await response.text()
       return NextResponse.json(
         { error: 'Gemini-Bildgenerierung fehlgeschlagen.', details: errorText || 'Unbekannter Fehler.' },
-        { status: 500 }
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )
     }
 
@@ -109,14 +117,20 @@ export async function POST(request: Request) {
     if (!imageBytes) {
       return NextResponse.json(
         { error: 'Keine Bilddaten erhalten.', details: JSON.stringify(data || {}) },
-        { status: 500 }
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )
     }
 
     const imageUrl = `data:image/png;base64,${imageBytes}`
-    return NextResponse.json({ imageUrl, prompt })
+    return NextResponse.json(
+      { imageUrl, prompt },
+      { headers: { 'Cache-Control': 'no-store' } }
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
-    return NextResponse.json({ error: 'Bildgenerierung fehlgeschlagen', details: message }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Bildgenerierung fehlgeschlagen', details: message },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
+    )
   }
 }
