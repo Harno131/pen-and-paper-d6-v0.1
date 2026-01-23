@@ -103,7 +103,10 @@ export default function SpielerPage() {
     localStorage.setItem('customEquipmentSlots', JSON.stringify(customSlots))
   }, [customSlots])
 
-  const equipmentSlots = [...BASE_EQUIPMENT_SLOTS, ...customSlots]
+  const equipmentSlots: Array<{ id: EquipmentSlot; label: string; hint?: string }> = [
+    ...BASE_EQUIPMENT_SLOTS,
+    ...customSlots,
+  ]
   const getSlotMeta = (slotId: EquipmentSlot) =>
     equipmentSlots.find((slot) => slot.id === slotId)
 
