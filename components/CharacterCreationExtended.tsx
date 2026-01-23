@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Character, Skill, Specialization } from '@/types'
 import { 
   saveCharacters, 
@@ -75,8 +75,13 @@ export default function CharacterCreationExtended({
   const [visibleEquipment, setVisibleEquipment] = useState('')
   const [profileImageLoading, setProfileImageLoading] = useState(false)
   const [profileImageError, setProfileImageError] = useState('')
+  const initKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
+    const initKey = existingCharacter?.id ?? 'new'
+    if (initKeyRef.current === initKey) return
+    initKeyRef.current = initKey
+
     const skills = getAvailableSkills()
     setAvailableSkills(skills)
     
@@ -107,36 +112,57 @@ export default function CharacterCreationExtended({
       })
       setSkillBonuses(bonuses)
       setSkillStepBonuses(stepBonuses)
+    } else {
+      setSkillBonuses({})
+      setSkillStepBonuses({})
     }
     setCharacterSkills(initialSkills)
-  }, [existingCharacter])
+    if (existingCharacter) {
+      setCharacterName(existingCharacter.name || '')
+      setClassName(existingCharacter.className || 'Abenteurer')
+      setOtherClass('')
+      setRace(existingCharacter.race || 'Mensch')
+      setOtherRace('')
+      setAge(existingCharacter.age || '')
+      setGender(existingCharacter.gender || '')
+      setSelectedAlignment(existingCharacter.alignment)
+      if (existingCharacter.profileImageUrl) {
+        setProfileImageUrl(existingCharacter.profileImageUrl)
+        setProfileImageSaved(true)
+      } else {
+        setProfileImageUrl(null)
+        setProfileImageSaved(false)
+      }
 
-  useEffect(() => {
-    if (!existingCharacter) return
-    setCharacterName(existingCharacter.name || '')
-    setClassName(existingCharacter.className || 'Abenteurer')
-    setRace(existingCharacter.race || 'Mensch')
-    setAge(existingCharacter.age || '')
-    setGender(existingCharacter.gender || '')
-    setSelectedAlignment(existingCharacter.alignment)
-    if (existingCharacter.profileImageUrl) {
-      setProfileImageUrl(existingCharacter.profileImageUrl)
-      setProfileImageSaved(true)
+      const bonuses: { [key: string]: number } = {}
+      const stepBonuses: { [key: string]: number } = {}
+      STANDARD_ATTRIBUTES.forEach((attr) => {
+        const base = BASE_VALUES[attr] || '2D'
+        const baseSteps = getStepsFromD6(base)
+        const current = existingCharacter.attributes?.[attr] || base
+        const currentSteps = getStepsFromD6(current)
+        const diffSteps = Math.max(0, currentSteps - baseSteps)
+        bonuses[attr] = Math.floor(diffSteps / 3)
+        stepBonuses[attr] = diffSteps % 3
+      })
+      setAttributeBonuses(bonuses)
+      setAttributeStepBonuses(stepBonuses)
+    } else {
+      setCharacterName('')
+      setClassName('Abenteurer')
+      setOtherClass('')
+      setRace('Mensch')
+      setOtherRace('')
+      setAge('')
+      setGender('')
+      setSelectedAlignment(undefined)
+      setAttributeBonuses({})
+      setAttributeStepBonuses({})
+      setCharTraits('')
+      setProfileImageUrl(null)
+      setProfileImageSaved(false)
     }
-
-    const bonuses: { [key: string]: number } = {}
-    const stepBonuses: { [key: string]: number } = {}
-    STANDARD_ATTRIBUTES.forEach((attr) => {
-      const base = BASE_VALUES[attr] || '2D'
-      const baseSteps = getStepsFromD6(base)
-      const current = existingCharacter.attributes?.[attr] || base
-      const currentSteps = getStepsFromD6(current)
-      const diffSteps = Math.max(0, currentSteps - baseSteps)
-      bonuses[attr] = Math.floor(diffSteps / 3)
-      stepBonuses[attr] = diffSteps % 3
-    })
-    setAttributeBonuses(bonuses)
-    setAttributeStepBonuses(stepBonuses)
+    setStep('basics')
   }, [existingCharacter])
 
   const getAttributeValue = (attrName: string): string => {
