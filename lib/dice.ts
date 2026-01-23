@@ -123,14 +123,66 @@ export function getD6Range(value: string): { min: number; max: number } {
   }
 }
 
-/**
- * Formatiert einen D6-Wert für die Anzeige
- */
-export function formatD6Value(value: string): string {
+export function d6ToBlips(value: string): number {
   const { diceCount, modifier } = parseD6Value(value)
-  if (modifier === 0) {
-    return `${diceCount}D`
+  return Math.max(0, diceCount * 3 + modifier)
+}
+
+const normalizeD6Parts = (diceCount: number, modifier: number) => {
+  const extraDice = Math.floor(modifier / 3)
+  const normalizedModifier = modifier % 3
+  return {
+    diceCount: diceCount + extraDice,
+    modifier: normalizedModifier,
   }
-  return `${diceCount}D+${modifier}`
+}
+
+/**
+ * Formatiert einen D6-Wert für die Anzeige.
+ * - Wenn eine Zahl uebergeben wird, wird sie als Blips interpretiert.
+ * - Modifikatoren > 2 werden automatisch in volle Wuerfel umgerechnet.
+ */
+export function formatD6Value(value: string | number): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const totalBlips = Math.max(0, Math.floor(value))
+    const diceCount = Math.floor(totalBlips / 3)
+    const modifier = totalBlips % 3
+    const normalized = normalizeD6Parts(diceCount, modifier)
+    return normalized.modifier === 0
+      ? `${normalized.diceCount}D`
+      : `${normalized.diceCount}D+${normalized.modifier}`
+  }
+
+  const raw = typeof value === 'string' ? value.trim().toUpperCase() : ''
+  const standard = raw.match(/^(\d+)D(?:\+(\d+))?$/)
+  const reversed = raw.match(/^D(\d+)\+(\d+)$/)
+  if (standard) {
+    const diceCount = parseInt(standard[1], 10)
+    const modifier = standard[2] ? parseInt(standard[2], 10) : 0
+    const normalized = normalizeD6Parts(diceCount, modifier)
+    return normalized.modifier === 0
+      ? `${normalized.diceCount}D`
+      : `${normalized.diceCount}D+${normalized.modifier}`
+  }
+  if (reversed) {
+    console.warn('formatD6Value: Nonstandard D6 format detected, normalizing.', {
+      input: value,
+    })
+    const diceCount = parseInt(reversed[1], 10)
+    const modifier = parseInt(reversed[2], 10)
+    const normalized = normalizeD6Parts(diceCount, modifier)
+    return normalized.modifier === 0
+      ? `${normalized.diceCount}D`
+      : `${normalized.diceCount}D+${normalized.modifier}`
+  }
+
+  console.warn('formatD6Value: Unrecognized D6 format, using parseD6Value fallback.', {
+    input: value,
+  })
+  const { diceCount, modifier } = parseD6Value(String(value))
+  const normalized = normalizeD6Parts(diceCount, modifier)
+  return normalized.modifier === 0
+    ? `${normalized.diceCount}D`
+    : `${normalized.diceCount}D+${normalized.modifier}`
 }
 

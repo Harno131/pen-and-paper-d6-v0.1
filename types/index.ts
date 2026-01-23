@@ -59,6 +59,7 @@ export interface Character {
   skillPointsUsed?: number // Verwendete Fertigkeitspunkte bei Erstellung
   blibsUsed?: number // Verwendete Blibs bei Erstellung
   earnedBlips?: number // Verdiente Blips durch Belohnungen
+  copperCoins?: number // Basis-Waehrung (Kupfer)
   // Verwundungen
   currentHP?: number // Aktuelle Trefferpunkte
   maxHP?: number // Maximale Trefferpunkte
@@ -86,12 +87,55 @@ export interface DeletedCharacter extends Character {
   deletedDate: Date // Muss vorhanden sein für gelöschte Charaktere
 }
 
+// NOTE: System offen halten -> erlaubt auch benutzerdefinierte Slots (string).
+export type EquipmentSlot =
+  | 'head'
+  | 'neck'
+  | 'ears'
+  | 'torso'
+  | 'legs'
+  | 'finger_l'
+  | 'finger_r'
+  | 'wrists'
+  | 'ankles'
+  | 'feet'
+  | 'back'
+  | 'main_hand'
+  | 'off_hand'
+  | 'belt'
+  | (string & {})
+
 export interface Item {
   id: string
   name: string
   description?: string
   quantity?: number
   category?: 'weapon' | 'armor' | 'equipment' | 'other' // Kategorie für Filterung
+  slot?: EquipmentSlot | EquipmentSlot[]
+  equippedSlots?: EquipmentSlot[]
+  twoHanded?: boolean
+  stats?: Record<string, number>
+}
+
+export type InjurySlot = EquipmentSlot | 'psyche'
+
+export interface InjuryTemplate {
+  id: string
+  name: string
+  slot: InjurySlot
+  description?: string
+  createdAt?: Date
+}
+
+export interface CharacterInjury {
+  id: string
+  characterId: string
+  groupId: string
+  slot: InjurySlot
+  templateId: string
+  currentSeverity: number
+  createdAt?: Date
+  updatedAt?: Date
 }
 
 export interface DiceRoll {
@@ -183,6 +227,7 @@ export interface CharacterCreationSettings {
   maxBlibsPerSpecialization: number // Standard: 2
   defaultStartBlips: number // Standard: 67
   fantasyCalendar?: FantasyCalendarSettings
+  printNotes?: string
 }
 
 export interface FantasyCalendarSettings {

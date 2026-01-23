@@ -1,4 +1,4 @@
-import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary } from '@/types'
+import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary, InjuryTemplate, CharacterInjury, InjurySlot } from '@/types'
 import { extractTagsFromText } from '@/lib/tags'
 import { createSupabaseClient } from './supabase'
 
@@ -218,6 +218,88 @@ export const removeBestiary = async (id: string): Promise<boolean> => {
   return !error
 }
 
+// Verletzungen (EGO_ULTRA)
+export const getInjuryTemplates = async (): Promise<InjuryTemplate[]> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('injury_templates')
+    .select('*')
+    .order('name', { ascending: true })
+
+  if (error || !data) return []
+
+  return data.map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    slot: row.slot as InjurySlot,
+    description: row.description || undefined,
+    createdAt: row.created_at ? new Date(row.created_at) : undefined,
+  }))
+}
+
+export const getCharacterInjuries = async (groupId: string): Promise<CharacterInjury[]> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('character_injuries')
+    .select('*')
+    .eq('group_id', groupId)
+
+  if (error || !data) return []
+
+  return data.map((row: any) => ({
+    id: row.id,
+    groupId: row.group_id,
+    characterId: row.character_id,
+    slot: row.slot as InjurySlot,
+    templateId: row.template_id,
+    currentSeverity: row.current_severity || 0,
+    createdAt: row.created_at ? new Date(row.created_at) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+  }))
+}
+
+export const upsertCharacterInjury = async (payload: {
+  id?: string
+  groupId: string
+  characterId: string
+  slot: InjurySlot
+  templateId: string
+  currentSeverity: number
+}): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+
+  const { error } = await supabase
+    .from('character_injuries')
+    .upsert({
+      id: payload.id,
+      group_id: payload.groupId,
+      character_id: payload.characterId,
+      slot: payload.slot,
+      template_id: payload.templateId,
+      current_severity: payload.currentSeverity,
+      updated_at: new Date().toISOString(),
+    })
+
+  return !error
+}
+
+export const removeCharacterInjury = async (injuryId: string): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+
+  const { error } = await supabase
+    .from('character_injuries')
+    .delete()
+    .eq('id', injuryId)
+
+  return !error
+}
+
 // Entferne einen Spieler aus der Gruppe
 export const removePlayerFromGroup = async (groupId: string, memberId: string, playerName: string): Promise<boolean> => {
   const supabase = createSupabaseClient()
@@ -392,6 +474,7 @@ export const getCharactersFromSupabase = async (groupId: string): Promise<Charac
     skillPointsUsed: char.skill_points_used,
     blibsUsed: char.blibs_used,
     earnedBlips: char.earned_blips || 0,
+    copperCoins: char.copper_coins ?? 0,
   }))
 }
 
@@ -431,6 +514,7 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
       skill_points_used: character.skillPointsUsed,
       blibs_used: character.blibsUsed,
       earned_blips: character.earnedBlips || 0,
+      copper_coins: character.copperCoins ?? 0,
     })
 
   return !error
@@ -529,7 +613,8 @@ export const getGroupSettings = async (groupId: string): Promise<CharacterCreati
     maxAttributeDicePerAttribute: 4,
     maxSkillDicePerSkill: 3,
     maxBlibsPerSpecialization: 3,
-    defaultStartBlips: settings.defaultStartBlips || 67
+    defaultStartBlips: settings.defaultStartBlips || 67,
+    printNotes: settings.printNotes || ''
   }
 }
 

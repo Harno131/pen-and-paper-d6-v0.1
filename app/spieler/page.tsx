@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Character, JournalEntry, SharedImage } from '@/types'
+import { Character, JournalEntry, SharedImage, Item, EquipmentSlot } from '@/types'
 import { 
   getCharacters, 
   getJournalEntries, 
@@ -17,17 +17,19 @@ import {
   getStorageError,
   clearStorageError,
 } from '@/lib/data'
-import { getGroupSettings } from '@/lib/supabase-data'
+import { getGroupSettings, getInjuryTemplates, getCharacterInjuries } from '@/lib/supabase-data'
 import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
 import { createSupabaseClient } from '@/lib/supabase'
 import { calculateSkillValue } from '@/lib/skills'
-import { formatD6Value } from '@/lib/dice'
+import { d6ToBlips, formatD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, TIMES_OF_DAY, getSpecialEvent, getMonthInfo } from '@/lib/fantasy-calendar'
+import { formatCopper } from '@/lib/money'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import CharacterCreationExtended from '@/components/CharacterCreationExtended'
 import SkillDiceRoller from '@/components/SkillDiceRoller'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
+import { getCharacterSkillPenaltyBlips } from '@/lib/injuries'
 
 export default function SpielerPage() {
   const parseSkillName = (name: string) => {
@@ -35,6 +37,107 @@ export default function SpielerPage() {
     const match = trimmed.match(/^\s*(\d+)[\).\s-]+(.+)$/)
     if (!match) return trimmed
     return match[2].trim()
+  }
+  const BASE_EQUIPMENT_SLOTS: { id: EquipmentSlot; label: string; hint: string }[] = [
+    { id: 'head', label: 'Kopf', hint: 'Helme, Hute, Stirnbander' },
+    { id: 'neck', label: 'Hals', hint: 'Amulette, Ketten' },
+    { id: 'ears', label: 'Ohren', hint: 'Ohrringe, Siegel-Ohrstecker' },
+    { id: 'torso', label: 'Oberkorper', hint: 'Rustungen, Roben, Hemden' },
+    { id: 'legs', label: 'Unterkorper', hint: 'Hosen, Beinschienen' },
+    { id: 'feet', label: 'Fusse', hint: 'Stiefel, Sandalen' },
+    { id: 'back', label: 'Rucken', hint: 'Umhange, Mantel' },
+    { id: 'finger_l', label: 'Finger (L)', hint: 'Ringe' },
+    { id: 'finger_r', label: 'Finger (R)', hint: 'Ringe' },
+    { id: 'wrists', label: 'Handgelenke', hint: 'Armschienen, Armreifen' },
+    { id: 'ankles', label: 'Fussgelenke', hint: 'Knochelketten' },
+    { id: 'main_hand', label: 'Rechte Hand', hint: 'Waffen, Fackeln' },
+    { id: 'off_hand', label: 'Linke Hand', hint: 'Schilde, Zweitwaffen' },
+    { id: 'belt', label: 'Gurtel', hint: 'Taschen, Kocher, Tranke' },
+  ]
+  const PAPERDOLL_LAYOUT: { id: EquipmentSlot; col: number; row: number }[] = [
+    { id: 'head', col: 3, row: 1 },
+    { id: 'ears', col: 4, row: 1 },
+    { id: 'neck', col: 3, row: 2 },
+    { id: 'wrists', col: 1, row: 2 },
+    { id: 'back', col: 2, row: 3 },
+    { id: 'torso', col: 3, row: 3 },
+    { id: 'main_hand', col: 5, row: 3 },
+    { id: 'off_hand', col: 1, row: 3 },
+    { id: 'finger_l', col: 1, row: 4 },
+    { id: 'finger_r', col: 5, row: 4 },
+    { id: 'legs', col: 3, row: 4 },
+    { id: 'belt', col: 3, row: 5 },
+    { id: 'ankles', col: 2, row: 5 },
+    { id: 'feet', col: 3, row: 6 },
+  ]
+
+  const normalizeSkillKey = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+  const [customSlots, setCustomSlots] = useState<{ id: EquipmentSlot; label: string }[]>([])
+  const [newSlotId, setNewSlotId] = useState('')
+  const [newSlotLabel, setNewSlotLabel] = useState('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = localStorage.getItem('customEquipmentSlots')
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          setCustomSlots(parsed)
+        }
+      } catch {
+        console.warn('Failed to parse customEquipmentSlots from localStorage.')
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem('customEquipmentSlots', JSON.stringify(customSlots))
+  }, [customSlots])
+
+  const equipmentSlots = [...BASE_EQUIPMENT_SLOTS, ...customSlots]
+  const getSlotMeta = (slotId: EquipmentSlot) =>
+    equipmentSlots.find((slot) => slot.id === slotId)
+
+  const getItemAllowedSlots = (item: Item): EquipmentSlot[] => {
+    if (!item.slot) return []
+    return Array.isArray(item.slot) ? item.slot : [item.slot]
+  }
+  const getEquippedSlots = (inventory: Item[]) => {
+    const equipped: Partial<Record<EquipmentSlot, Item>> = {}
+    inventory.forEach((item) => {
+      if (!item.equippedSlots) return
+      item.equippedSlots.forEach((slot) => {
+        if (!equipped[slot]) {
+          equipped[slot] = item
+        }
+      })
+    })
+    return equipped
+  }
+  const getEquipmentSkillBonus = (character: Character, skillName: string): number => {
+    const target = normalizeSkillKey(skillName)
+    let total = 0
+    character.inventory.forEach((item) => {
+      if (!item.equippedSlots || !item.stats) return
+      Object.entries(item.stats).forEach(([key, value]) => {
+        if (normalizeSkillKey(key) === target && Number.isFinite(value)) {
+          total += Number(value)
+        }
+      })
+    })
+    return total
+  }
+  const getInjurySkillPenalty = (character: Character, skillName: string): number => {
+    return getCharacterSkillPenaltyBlips(characterInjuries, character.id, skillName)
   }
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'characters' | 'character' | 'skills' | 'equipment' | 'journal' | 'images'>('characters')
@@ -55,6 +158,8 @@ export default function SpielerPage() {
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
   const [isSavingJournal, setIsSavingJournal] = useState(false)
   const [storageError, setStorageError] = useState('')
+  const [injuryTemplates, setInjuryTemplates] = useState<any[]>([])
+  const [characterInjuries, setCharacterInjuries] = useState<any[]>([])
   const [showSyncIndicator, setShowSyncIndicator] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugLoading, setDebugLoading] = useState(false)
@@ -132,6 +237,11 @@ export default function SpielerPage() {
     }
 
     if (groupId) {
+      const templates = await getInjuryTemplates()
+      setInjuryTemplates(templates)
+      const injuries = await getCharacterInjuries(groupId)
+      setCharacterInjuries(injuries)
+
       const groupSettings = await getGroupSettings(groupId)
       if (groupSettings?.fantasyCalendar) {
         setFantasyCalendarStart({
@@ -141,6 +251,9 @@ export default function SpielerPage() {
       } else {
         setFantasyCalendarStart(null)
       }
+    } else {
+      setInjuryTemplates([])
+      setCharacterInjuries([])
     }
   }, [selectedCharacter, groupId])
 
@@ -317,6 +430,11 @@ export default function SpielerPage() {
       { event: 'UPDATE', schema: 'public', table: 'journal_entries', filter: `group_id=eq.${groupId}` },
       handleRealtimeChange
     )
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'character_injuries', filter: `group_id=eq.${groupId}` },
+      handleRealtimeChange
+    )
     channel.subscribe()
     return () => {
       if (syncIndicatorTimeoutRef.current) {
@@ -438,7 +556,14 @@ export default function SpielerPage() {
     loadData()
   }
 
-  const addItemToCharacter = (item: { name: string; description?: string; quantity?: number }) => {
+  const addItemToCharacter = (item: {
+    name: string
+    description?: string
+    quantity?: number
+    slot?: EquipmentSlot
+    twoHanded?: boolean
+    stats?: Record<string, number>
+  }) => {
     if (!selectedCharacter) return
 
     const characters = getCharacters()
@@ -459,6 +584,74 @@ export default function SpielerPage() {
     })
     saveCharacters(updated)
     loadData()
+  }
+
+  const updateCharacterInventory = (nextInventory: Item[]) => {
+    if (!selectedCharacter) return
+    const characters = getCharacters()
+    const updated = characters.map((char) => {
+      if (char.id === selectedCharacter.id) {
+        return { ...char, inventory: nextInventory }
+      }
+      return char
+    })
+    saveCharacters(updated)
+    setSelectedCharacter({ ...selectedCharacter, inventory: nextInventory })
+    loadData()
+  }
+
+  const handleEquipItem = (slot: EquipmentSlot, itemId: string) => {
+    if (!selectedCharacter) return
+    const inventory = selectedCharacter.inventory.map((item) => ({ ...item }))
+    const targetItem = inventory.find((item) => item.id === itemId)
+    if (!targetItem) return
+    const allowedSlots = getItemAllowedSlots(targetItem)
+    if (!allowedSlots.includes(slot)) {
+      alert('Gegenstand passt nicht in diesen Slot.')
+      return
+    }
+    if (targetItem.twoHanded && slot !== 'main_hand' && slot !== 'off_hand') {
+      alert('Zweihandige Gegenstande konnen nur in Hand-Slots ausgerustet werden.')
+      return
+    }
+
+    const targetSlots: EquipmentSlot[] = targetItem.twoHanded && (slot === 'main_hand' || slot === 'off_hand')
+      ? ['main_hand', 'off_hand']
+      : [slot]
+
+    inventory.forEach((item) => {
+      if (!item.equippedSlots || item.id === targetItem.id) return
+      if (item.twoHanded && (targetSlots.includes('main_hand') || targetSlots.includes('off_hand'))) {
+        item.equippedSlots = item.equippedSlots.filter((s) => s !== 'main_hand' && s !== 'off_hand')
+      } else {
+        item.equippedSlots = item.equippedSlots.filter((s) => !targetSlots.includes(s))
+      }
+      if (item.equippedSlots.length === 0) {
+        delete item.equippedSlots
+      }
+    })
+
+    targetItem.equippedSlots = targetSlots
+    updateCharacterInventory(inventory)
+  }
+
+  const handleUnequipSlot = (slot: EquipmentSlot) => {
+    if (!selectedCharacter) return
+    const inventory = selectedCharacter.inventory.map((item) => ({ ...item }))
+    inventory.forEach((item) => {
+      if (!item.equippedSlots) return
+      if (item.equippedSlots.includes(slot)) {
+        if (item.twoHanded && (slot === 'main_hand' || slot === 'off_hand')) {
+          item.equippedSlots = item.equippedSlots.filter((s) => s !== 'main_hand' && s !== 'off_hand')
+        } else {
+          item.equippedSlots = item.equippedSlots.filter((s) => s !== slot)
+        }
+        if (item.equippedSlots.length === 0) {
+          delete item.equippedSlots
+        }
+      }
+    })
+    updateCharacterInventory(inventory)
   }
 
   const removeItemFromCharacter = (itemId: string) => {
@@ -773,6 +966,7 @@ export default function SpielerPage() {
                       <p>Attribute: {Object.keys(character.attributes).length}</p>
                       <p>Fertigkeiten: {character.skills.length}</p>
                       <p>Inventar: {character.inventory.length} Gegenstände</p>
+                      <p>Geld: {formatCopper(character.copperCoins)}</p>
                     </div>
                     <div className="mt-4 pt-4 border-t border-white/20">
                       <p className="text-white/50 text-xs">
@@ -815,6 +1009,10 @@ export default function SpielerPage() {
                         </p>
                       ) : null
                     })()}
+                    <p>
+                      <span className="font-semibold">Geld:</span>{' '}
+                      {formatCopper(selectedCharacter.copperCoins)}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -1064,13 +1262,18 @@ export default function SpielerPage() {
                     {combatSkills.map((skill) => {
                       const attributeValue = selectedCharacter.attributes[skill.attribute] || '1D'
                       const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                      const skillDiceFormula = calculateSkillValue(
+                      const equipmentBonus = getEquipmentSkillBonus(selectedCharacter, skill.name)
+                      const injuryPenalty = getInjurySkillPenalty(selectedCharacter, skill.name)
+                      const baseSkillFormula = calculateSkillValue(
                         attributeValue,
                         skill.bonusDice,
                         skill.bonusSteps || 0,
                         skill.isWeakened,
                         isLearned
                       )
+                      const totalBlips =
+                        d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                      const finalSkillFormula = formatD6Value(totalBlips)
                       return (
                         <div
                           key={skill.id}
@@ -1081,7 +1284,16 @@ export default function SpielerPage() {
                             Attribut: {skill.attribute} ({formatD6Value(attributeValue)})
                           </p>
                           <p className="text-white/70 text-sm">
-                            Fertigkeit: {formatD6Value(skillDiceFormula)}
+                            Fertigkeit:{' '}
+                            <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
+                              {finalSkillFormula}
+                            </span>
+                            {equipmentBonus > 0 && (
+                              <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
+                            )}
+                            {injuryPenalty > 0 && (
+                              <span className="text-red-300 ml-2">-{injuryPenalty}</span>
+                            )}
                           </p>
                           {skill.specializations && skill.specializations.length > 0 && (
                             <p className="text-white/60 text-xs mt-1">
@@ -1176,13 +1388,18 @@ export default function SpielerPage() {
                       <div className="space-y-2">
                         {skillsForAttribute.map((skill) => {
                           const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                          const skillDiceFormula = calculateSkillValue(
+                          const equipmentBonus = getEquipmentSkillBonus(selectedCharacter, skill.name)
+                          const injuryPenalty = getInjurySkillPenalty(selectedCharacter, skill.name)
+                          const baseSkillFormula = calculateSkillValue(
                             attributeValue,
                             skill.bonusDice,
                             skill.bonusSteps || 0,
                             skill.isWeakened,
                             isLearned
                           )
+                          const totalBlips =
+                            d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                          const finalSkillFormula = formatD6Value(totalBlips)
 
                           return (
                             <div key={skill.id} className="space-y-2">
@@ -1197,7 +1414,15 @@ export default function SpielerPage() {
                                       {parseSkillName(skill.name)}
                                     </div>
                                     <div className="text-white/70 text-sm mt-1">
-                                      {formatD6Value(skillDiceFormula)}
+                                      <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
+                                        {finalSkillFormula}
+                                      </span>
+                                      {equipmentBonus > 0 && (
+                                        <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
+                                      )}
+                                      {injuryPenalty > 0 && (
+                                        <span className="text-red-300 ml-2">-{injuryPenalty}</span>
+                                      )}
                                       {skill.isWeakened && !isLearned && (
                                         <span className="text-yellow-400 ml-2">(geschwächt)</span>
                                       )}
@@ -1212,13 +1437,16 @@ export default function SpielerPage() {
                                 <div className="ml-6 space-y-2">
                                   {skill.specializations.map((spec) => {
                                     const specBlibs = spec.blibs
-                                    const specDiceFormula = calculateSkillValue(
+                                    const baseSpecFormula = calculateSkillValue(
                                       attributeValue,
                                       skill.bonusDice,
                                       specBlibs,
                                       skill.isWeakened,
                                       isLearned
                                     )
+                                    const specTotalBlips =
+                                      d6ToBlips(baseSpecFormula) + equipmentBonus - injuryPenalty
+                                    const finalSpecFormula = formatD6Value(specTotalBlips)
                                     return (
                                       <button
                                         key={spec.id}
@@ -1231,11 +1459,19 @@ export default function SpielerPage() {
                                               {spec.name}
                                             </div>
                                             <div className="text-white/70 text-sm mt-1">
-                                              {formatD6Value(specDiceFormula)}
+                                              <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
+                                                {finalSpecFormula}
+                                              </span>
                                               {specBlibs > 0 && (
                                                 <span className="text-yellow-400 ml-2">
                                                   ({specBlibs} Blibs)
                                                 </span>
+                                              )}
+                                              {equipmentBonus > 0 && (
+                                                <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
+                                              )}
+                                              {injuryPenalty > 0 && (
+                                                <span className="text-red-300 ml-2">-{injuryPenalty}</span>
                                               )}
                                             </div>
                                           </div>
@@ -1290,36 +1526,232 @@ export default function SpielerPage() {
                     rows={2}
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                   />
-                  <div className="flex items-center gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input
                       type="number"
                       placeholder="Anzahl (optional)"
                       id="newItemQuantity"
                       min="1"
-                      className="w-32 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
                     />
+                    <select
+                      id="newItemSlot"
+                      defaultValue=""
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      <option value="" className="bg-slate-800">Slot (optional)</option>
+                      {equipmentSlots.map((slot) => (
+                        <option key={slot.id} value={slot.id} className="bg-slate-800">
+                          {slot.label}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="flex items-center gap-2 text-white/70">
+                      <input id="newItemTwoHanded" type="checkbox" className="rounded" />
+                      Zweihandig
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      id="newItemBonusSkill"
+                      placeholder="Bonus-Fertigkeit (z.B. Schloss knacken)"
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    <input
+                      type="number"
+                      id="newItemBonusValue"
+                      placeholder="Bonus-Wert (z.B. 3)"
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
                     <button
                       onClick={() => {
                         const nameInput = document.getElementById('newItemName') as HTMLInputElement
                         const descInput = document.getElementById('newItemDescription') as HTMLTextAreaElement
                         const qtyInput = document.getElementById('newItemQuantity') as HTMLInputElement
+                        const slotInput = document.getElementById('newItemSlot') as HTMLSelectElement
+                        const bonusSkillInput = document.getElementById('newItemBonusSkill') as HTMLInputElement
+                        const bonusValueInput = document.getElementById('newItemBonusValue') as HTMLInputElement
+                        const twoHandedInput = document.getElementById('newItemTwoHanded') as HTMLInputElement
                         
                         if (nameInput && nameInput.value.trim()) {
+                          const bonusSkill = bonusSkillInput?.value.trim()
+                          const bonusValue = bonusValueInput?.value ? Number(bonusValueInput.value) : 0
+                          const stats = bonusSkill && Number.isFinite(bonusValue) && bonusValue !== 0
+                            ? { [bonusSkill]: bonusValue }
+                            : undefined
                           addItemToCharacter({
                             name: nameInput.value.trim(),
                             description: descInput?.value.trim() || undefined,
                             quantity: qtyInput?.value ? parseInt(qtyInput.value) : undefined,
+                            slot: slotInput?.value ? (slotInput.value as EquipmentSlot) : undefined,
+                            twoHanded: Boolean(twoHandedInput?.checked),
+                            stats,
                           })
                           
                           // Felder leeren
                           nameInput.value = ''
                           if (descInput) descInput.value = ''
                           if (qtyInput) qtyInput.value = ''
+                          if (slotInput) slotInput.value = ''
+                          if (bonusSkillInput) bonusSkillInput.value = ''
+                          if (bonusValueInput) bonusValueInput.value = ''
+                          if (twoHandedInput) twoHandedInput.checked = false
                         }
                       }}
                       className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
                     >
                       Hinzufügen
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slot-Ausrustung */}
+              <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10">
+                <h3 className="text-lg font-semibold text-white mb-3">Ausrustung (Slots)</h3>
+                <div className="mb-4 relative">
+                  <div className="grid grid-cols-5 gap-3">
+                    <div className="col-span-5 row-span-6">
+                      <div className="grid grid-cols-5 gap-3">
+                        <div className="col-start-2 col-span-3 row-start-2 row-span-4 bg-white/5 border border-white/10 rounded-2xl min-h-[200px] flex items-center justify-center text-white/40 text-sm">
+                          Paperdoll
+                        </div>
+                        {PAPERDOLL_LAYOUT.map((slot) => {
+                          const slotMeta = getSlotMeta(slot.id)
+                          if (!slotMeta) return null
+                          const equippedSlots = getEquippedSlots(selectedCharacter.inventory)
+                          const equippedItem = equippedSlots[slot.id]
+                          return (
+                            <div
+                              key={`drop-${slot.id}`}
+                              style={{ gridColumn: slot.col, gridRow: slot.row }}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                const itemId = e.dataTransfer.getData('text/plain')
+                                if (itemId) {
+                                  handleEquipItem(slot.id, itemId)
+                                }
+                              }}
+                              className="bg-black/30 border border-white/10 rounded-lg p-2 text-center"
+                              title={slotMeta.hint}
+                            >
+                              <div className="text-[10px] text-white/60">{slotMeta.label}</div>
+                              <div className="text-white text-xs mt-1 min-h-[1rem]">
+                                {equippedItem ? (
+                                  <span
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.setData('text/plain', equippedItem.id)
+                                    }}
+                                    className="cursor-move"
+                                    title={equippedItem.description || equippedItem.name}
+                                  >
+                                    {equippedItem.name}
+                                  </span>
+                                ) : (
+                                  'leer'
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-white/50 text-xs mt-2">
+                    Tipp: Ziehe Items aus dem Inventar direkt auf einen Slot.
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {(() => {
+                    const equippedSlots = getEquippedSlots(selectedCharacter.inventory)
+                    return equipmentSlots.map((slot) => {
+                      const equippedItem = equippedSlots[slot.id]
+                      const eligibleItems = selectedCharacter.inventory.filter((item) =>
+                        getItemAllowedSlots(item).includes(slot.id)
+                      )
+                      return (
+                        <div key={slot.id} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                          <div className="text-white/80">
+                            {slot.label}
+                            {('hint' in slot) && (slot as { hint?: string }).hint && (
+                              <div className="text-white/50 text-xs">{(slot as { hint?: string }).hint}</div>
+                            )}
+                          </div>
+                          <select
+                            value={equippedItem?.id || ''}
+                            onChange={(e) => {
+                              const itemId = e.target.value
+                              if (!itemId) {
+                                handleUnequipSlot(slot.id)
+                                return
+                              }
+                              handleEquipItem(slot.id, itemId)
+                            }}
+                            className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                          >
+                            <option value="" className="bg-slate-800">— leer —</option>
+                            {eligibleItems.map((item) => (
+                              <option key={item.id} value={item.id} className="bg-slate-800">
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex items-center gap-2 text-white/60 text-sm">
+                            {equippedItem ? (
+                              <>
+                                <span>{equippedItem.twoHanded ? 'Zweihandig' : 'Ausgerustet'}</span>
+                                <button
+                                  onClick={() => handleUnequipSlot(slot.id)}
+                                  className="text-red-300 hover:text-red-200 text-xs"
+                                >
+                                  Entfernen
+                                </button>
+                              </>
+                            ) : (
+                              <span>—</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <div className="text-white/80 text-sm mb-2">Neuen Slot hinzufugen</div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                    <input
+                      type="text"
+                      value={newSlotId}
+                      onChange={(e) => setNewSlotId(e.target.value.trim())}
+                      placeholder="Slot-ID (z.B. backpack)"
+                      className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    <input
+                      type="text"
+                      value={newSlotLabel}
+                      onChange={(e) => setNewSlotLabel(e.target.value)}
+                      placeholder="Anzeige-Name (z.B. Rucksack)"
+                      className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    <button
+                      onClick={() => {
+                        if (!newSlotId || !newSlotLabel) return
+                        const exists = equipmentSlots.some((slot) => slot.id === newSlotId)
+                        if (exists) {
+                          alert('Slot-ID existiert bereits.')
+                          return
+                        }
+                        setCustomSlots((prev) => [...prev, { id: newSlotId, label: newSlotLabel }])
+                        setNewSlotId('')
+                        setNewSlotLabel('')
+                      }}
+                      className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                    >
+                      Slot hinzufugen
                     </button>
                   </div>
                 </div>
@@ -1339,7 +1771,11 @@ export default function SpielerPage() {
                     {selectedCharacter.inventory.map((item) => (
                       <div
                         key={item.id}
-                        className="bg-white/5 rounded-lg p-4 border border-white/10"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', item.id)
+                        }}
+                        className="bg-white/5 rounded-lg p-4 border border-white/10 cursor-move"
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -1354,6 +1790,19 @@ export default function SpielerPage() {
                             {item.description && (
                               <p className="text-white/70 text-sm mt-1">
                                 {item.description}
+                              </p>
+                            )}
+                            {item.equippedSlots && item.equippedSlots.length > 0 && (
+                              <p className="text-blue-300 text-xs mt-1">
+                                Ausgerustet: {item.equippedSlots.map((slot) => {
+                                  const label = equipmentSlots.find(s => s.id === slot)?.label || slot
+                                  return label
+                                }).join(', ')}
+                              </p>
+                            )}
+                            {item.stats && Object.keys(item.stats).length > 0 && (
+                              <p className="text-blue-300 text-xs mt-1">
+                                Bonus: {Object.entries(item.stats).map(([key, value]) => `${key} +${value}`).join(', ')}
                               </p>
                             )}
                           </div>
@@ -1759,6 +2208,7 @@ export default function SpielerPage() {
             character={selectedCharacter}
             skill={selectedSkillForRoll.skill}
             specialization={selectedSkillForRoll.specialization}
+            injuryPenaltyBlips={getInjurySkillPenalty(selectedCharacter, selectedSkillForRoll.skill.name)}
             onClose={() => setSelectedSkillForRoll(null)}
           />
         )}

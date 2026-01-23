@@ -1,15 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { Character, Skill, Specialization, DiceRoll } from '@/types'
+import { Character, Skill, Specialization, DiceRoll, Item } from '@/types'
 import { saveDiceRoll } from '@/lib/data'
-import { rollD6, formatD6Value } from '@/lib/dice'
+import { rollD6, formatD6Value, d6ToBlips } from '@/lib/dice'
 import { calculateSkillValue } from '@/lib/skills'
 
 interface SkillDiceRollerProps {
   character: Character
   skill: Skill
   specialization?: Specialization
+  injuryPenaltyBlips?: number
   onClose: () => void
 }
 
@@ -17,6 +18,7 @@ export default function SkillDiceRoller({
   character,
   skill,
   specialization,
+  injuryPenaltyBlips = 0,
   onClose,
 }: SkillDiceRollerProps) {
   const [isRolling, setIsRolling] = useState(false)
@@ -31,12 +33,35 @@ export default function SkillDiceRoller({
     return match[2].trim()
   }
 
+  const normalizeSkillKey = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+  const getEquipmentSkillBonus = (inventory: Item[], skillName: string): number => {
+    const target = normalizeSkillKey(skillName)
+    let total = 0
+    inventory.forEach((item) => {
+      if (!item.equippedSlots || !item.stats) return
+      Object.entries(item.stats).forEach(([key, value]) => {
+        if (normalizeSkillKey(key) === target && Number.isFinite(value)) {
+          total += Number(value)
+        }
+      })
+    })
+    return total
+  }
+
   // Berechne den finalen D6-Wert der Fertigkeit
   const attributeValue = character.attributes[skill.attribute] || '1D'
   const isLearned = skill.bonusDice > 0 || (specialization && specialization.blibs > 0)
+  const equipmentBonus = getEquipmentSkillBonus(character.inventory, skill.name)
   const skillBlibs = specialization
-    ? (skill.bonusSteps || 0) + specialization.blibs
-    : (skill.bonusSteps || 0)
+    ? (skill.bonusSteps || 0) + specialization.blibs + equipmentBonus
+    : (skill.bonusSteps || 0) + equipmentBonus
   const skillDiceFormula = calculateSkillValue(
     attributeValue,
     skill.bonusDice,
@@ -44,6 +69,8 @@ export default function SkillDiceRoller({
     skill.isWeakened,
     isLearned
   )
+  const totalBlips = d6ToBlips(skillDiceFormula) - injuryPenaltyBlips
+  const finalSkillFormula = formatD6Value(totalBlips)
 
   const handleRoll = () => {
     if (showResult) {
@@ -57,7 +84,7 @@ export default function SkillDiceRoller({
     
     // Simuliere Würfelwurf mit Animation
     setTimeout(() => {
-      const rollResult = rollD6(skillDiceFormula)
+      const rollResult = rollD6(finalSkillFormula)
       const target = targetValue !== '' ? Number(targetValue) : undefined
       
       // Bei Critical Failure (roter Würfel = 1) ist es immer ein Fehlschlag
@@ -131,8 +158,14 @@ export default function SkillDiceRoller({
           <div className="bg-white/10 rounded-xl p-6 mb-6 border border-white/20 text-center">
             <div className="text-white/70 text-xl mb-2">Würfel-Formel</div>
             <div className="text-5xl font-bold text-white font-mono">
-              {formatD6Value(skillDiceFormula)}
+              {finalSkillFormula}
             </div>
+            {equipmentBonus > 0 && (
+              <div className="text-blue-300 text-sm mt-2">Bonus durch Ausrustung: +{equipmentBonus}</div>
+            )}
+            {injuryPenaltyBlips > 0 && (
+              <div className="text-red-300 text-sm mt-2">Malus durch Verletzungen: -{injuryPenaltyBlips}</div>
+            )}
             {skill.isWeakened && !isLearned && (
               <div className="text-yellow-400 text-sm mt-2">
                 ⚠️ Geschwächte Fertigkeit (3D weniger)

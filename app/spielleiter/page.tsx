@@ -25,18 +25,20 @@ import {
   getStorageError,
   clearStorageError,
 } from '@/lib/data'
-import { getGroupSettings, getBestiary, upsertBestiary, removeBestiary } from '@/lib/supabase-data'
+import { getGroupSettings, saveGroupSettings, getBestiary, upsertBestiary, removeBestiary, getInjuryTemplates, getCharacterInjuries, upsertCharacterInjury, removeCharacterInjury } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
-import { formatD6Value } from '@/lib/dice'
+import { d6ToBlips, formatD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getWeekdayInfo, TIMES_OF_DAY, MONTHS, createFantasyDate, type FantasyDate } from '@/lib/fantasy-calendar'
+import { formatCopper } from '@/lib/money'
 import { getAlignment } from '@/lib/alignments'
 import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
 import NameGenerator from '@/components/NameGenerator'
 import NpcCreationExtended from '@/components/NpcCreationExtended'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 import { createSupabaseClient } from '@/lib/supabase'
+import { getCharacterSkillPenaltyBlips } from '@/lib/injuries'
 
 const BESTIARY_ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'] as const
 const DEFAULT_MONSTER_ATTRIBUTES = {
@@ -74,6 +76,13 @@ export default function SpielleiterPage() {
   const [isSavingJournal, setIsSavingJournal] = useState(false)
   const [showSyncIndicator, setShowSyncIndicator] = useState(false)
   const [storageError, setStorageError] = useState('')
+  const [injuryTemplates, setInjuryTemplates] = useState<any[]>([])
+  const [characterInjuries, setCharacterInjuries] = useState<any[]>([])
+  const [selectedInjuryCharacterId, setSelectedInjuryCharacterId] = useState('')
+  const [selectedInjurySlot, setSelectedInjurySlot] = useState('')
+  const [selectedInjuryTemplateId, setSelectedInjuryTemplateId] = useState('')
+  const [selectedInjurySeverity, setSelectedInjurySeverity] = useState<1 | 3>(1)
+  const [printNotes, setPrintNotes] = useState('')
   const [rewardGroupBlips, setRewardGroupBlips] = useState('')
   const [rewardSingleBlips, setRewardSingleBlips] = useState('')
   const [rewardSingleReason, setRewardSingleReason] = useState('')
@@ -148,6 +157,28 @@ export default function SpielleiterPage() {
   }
 
   const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
+
+  const normalizeSkillKey = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+  const getEquipmentSkillBonus = (character: Character, skillName: string): number => {
+    const target = normalizeSkillKey(skillName)
+    let total = 0
+    character.inventory.forEach((item) => {
+      if (!item.equippedSlots || !item.stats) return
+      Object.entries(item.stats).forEach(([key, value]) => {
+        if (normalizeSkillKey(key) === target && Number.isFinite(value)) {
+          total += Number(value)
+        }
+      })
+    })
+    return total
+  }
 
   const [gmName, setGmName] = useState('')
   const gmNameLabel = gmName.trim() || 'Spielleiter'
@@ -391,6 +422,11 @@ export default function SpielleiterPage() {
     // Lade Gruppenmitglieder und Kalender-Startdaten
     const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
     if (currentGroupId) {
+      const templates = await getInjuryTemplates()
+      setInjuryTemplates(templates)
+      const injuries = await getCharacterInjuries(currentGroupId)
+      setCharacterInjuries(injuries)
+
       const groupSettings = await getGroupSettings(currentGroupId)
       if (groupSettings?.fantasyCalendar) {
         setFantasyCalendarStart({
@@ -400,6 +436,11 @@ export default function SpielleiterPage() {
       } else {
         setFantasyCalendarStart(null)
       }
+      setPrintNotes(groupSettings?.printNotes || '')
+    } else {
+      setInjuryTemplates([])
+      setCharacterInjuries([])
+      setPrintNotes('')
     }
   }, [groupId])
 
@@ -476,6 +517,11 @@ export default function SpielleiterPage() {
     channel.on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'journal_entries', filter: `group_id=eq.${groupId}` },
+      handleRealtimeChange
+    )
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'character_injuries', filter: `group_id=eq.${groupId}` },
       handleRealtimeChange
     )
     channel.subscribe()
@@ -905,6 +951,192 @@ export default function SpielleiterPage() {
               </div>
             </div>
 
+            {/* Verletzungen */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h2 className="text-2xl font-bold text-white mb-4">Verletzungs-Menü</h2>
+              {(() => {
+                const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
+                const groupCharacters = (groupId ? characters : characters).filter(char =>
+                  !char.deletedDate && !char.isNPC
+                )
+                if (groupCharacters.length === 0) {
+                  return <p className="text-white/70">Noch keine Spieler-Charaktere vorhanden.</p>
+                }
+                const templateById = new Map(injuryTemplates.map(t => [t.id, t]))
+                const filteredTemplates = selectedInjurySlot
+                  ? injuryTemplates.filter(t => t.slot === selectedInjurySlot)
+                  : injuryTemplates
+                const injuriesForSelected = characterInjuries.filter(i => i.characterId === selectedInjuryCharacterId)
+                return (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                      <select
+                        value={selectedInjuryCharacterId}
+                        onChange={(e) => setSelectedInjuryCharacterId(e.target.value)}
+                        className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                      >
+                        <option value="" className="bg-slate-800">Charakter wählen...</option>
+                        {groupCharacters.map(char => (
+                          <option key={char.id} value={char.id} className="bg-slate-800">
+                            {char.name} ({char.playerName})
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedInjurySlot}
+                        onChange={(e) => setSelectedInjurySlot(e.target.value)}
+                        className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                      >
+                        <option value="" className="bg-slate-800">Slot wählen...</option>
+                        {[
+                          'head', 'neck', 'ears', 'torso', 'legs', 'feet', 'back',
+                          'finger_l', 'finger_r', 'wrists', 'ankles', 'main_hand', 'off_hand', 'belt', 'psyche'
+                        ].map(slot => (
+                          <option key={slot} value={slot} className="bg-slate-800">{slot}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedInjuryTemplateId}
+                        onChange={(e) => setSelectedInjuryTemplateId(e.target.value)}
+                        className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                      >
+                        <option value="" className="bg-slate-800">Verletzung wählen...</option>
+                        {filteredTemplates.map(template => (
+                          <option key={template.id} value={template.id} className="bg-slate-800">
+                            {template.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedInjurySeverity}
+                        onChange={(e) => setSelectedInjurySeverity(Number(e.target.value) as 1 | 3)}
+                        className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                      >
+                        <option value={1} className="bg-slate-800">Ladiert (-1)</option>
+                        <option value={3} className="bg-slate-800">Verwundet (-3)</option>
+                      </select>
+                      <button
+                        onClick={async () => {
+                          if (!currentGroupId) {
+                            alert('Kein groupId gefunden.')
+                            return
+                          }
+                          if (!selectedInjuryCharacterId || !selectedInjurySlot || !selectedInjuryTemplateId) {
+                            alert('Bitte Charakter, Slot und Verletzung auswahlen.')
+                            return
+                          }
+                          const existingForSlot = injuriesForSelected.filter(
+                            (injury) => injury.slot === selectedInjurySlot
+                          )
+                          const countLight = existingForSlot.filter(i => i.currentSeverity === 1).length
+                          const countHeavy = existingForSlot.filter(i => i.currentSeverity === 3).length
+                          if (selectedInjurySeverity === 1 && countLight >= 3) {
+                            alert('Maximal 3x Ladiert pro Slot erlaubt.')
+                            return
+                          }
+                          if (selectedInjurySeverity === 3 && countHeavy >= 3) {
+                            alert('Maximal 3x Verwundet pro Slot erlaubt.')
+                            return
+                          }
+                          const success = await upsertCharacterInjury({
+                            groupId: currentGroupId,
+                            characterId: selectedInjuryCharacterId,
+                            slot: selectedInjurySlot as any,
+                            templateId: selectedInjuryTemplateId,
+                            currentSeverity: selectedInjurySeverity,
+                          })
+                          if (!success) {
+                            console.warn('Failed to upsert character injury.', {
+                              characterId: selectedInjuryCharacterId,
+                              slot: selectedInjurySlot,
+                              templateId: selectedInjuryTemplateId,
+                            })
+                          }
+                          await loadData()
+                        }}
+                        className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                      >
+                        Verletzung zuweisen
+                      </button>
+                    </div>
+                    {selectedInjuryCharacterId && (
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <div className="text-white/80 text-sm mb-2">Aktive Verletzungen</div>
+                        {injuriesForSelected.length === 0 ? (
+                          <div className="text-white/60 text-sm">Keine Verletzungen gesetzt.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {injuriesForSelected.map((injury) => {
+                              const template = templateById.get(injury.templateId)
+                              return (
+                                <div key={injury.id} className="flex items-center justify-between bg-white/5 rounded p-2">
+                                  <div className="text-white text-sm">
+                                    {template?.name || injury.templateId} • {injury.slot} • {injury.currentSeverity === 3 ? 'Verwundet' : 'Ladiert'}
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const success = await removeCharacterInjury(injury.id)
+                                      if (!success) {
+                                        console.warn('Failed to remove character injury.', { injuryId: injury.id })
+                                      }
+                                      await loadData()
+                                    }}
+                                    className="text-red-300 hover:text-red-200 text-xs"
+                                  >
+                                    Entfernen
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Geldverwaltung */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h2 className="text-2xl font-bold text-white mb-4">Geldverwaltung</h2>
+              {(() => {
+                const groupCharacters = characters.filter(char => !char.deletedDate && !char.isNPC)
+                if (groupCharacters.length === 0) {
+                  return <p className="text-white/70">Noch keine Spieler-Charaktere vorhanden.</p>
+                }
+                return (
+                  <div className="space-y-3">
+                    {groupCharacters.map((char) => (
+                      <div key={char.id} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center bg-white/5 rounded-lg p-3">
+                        <div className="text-white">
+                          {char.name} <span className="text-white/60">({char.playerName})</span>
+                        </div>
+                        <div className="text-white/70">
+                          {formatCopper(char.copperCoins)}
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          value={char.copperCoins ?? 0}
+                          onChange={(e) => {
+                            const next = Math.max(0, Number(e.target.value || 0))
+                            const updated = characters.map((c) =>
+                              c.id === char.id ? { ...c, copperCoins: next } : c
+                            )
+                            setCharacters(updated)
+                            saveCharacters(updated)
+                          }}
+                          className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                          placeholder="Kupfer"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+
             {/* Charaktere-Übersicht - ZUERST */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h2 className="text-2xl font-bold text-white mb-4">Charaktere-Übersicht</h2>
@@ -1003,14 +1235,18 @@ export default function SpielleiterPage() {
                   if (dodgeSkill) {
                     const attributeValue = char.attributes[dodgeSkill.attribute] || '1D'
                     const isLearned = dodgeSkill.bonusDice > 0 || (dodgeSkill.specializations && dodgeSkill.specializations.some(s => s.blibs > 0))
-                    const skillDiceFormula = calculateSkillValue(
+                    const equipmentBonus = getEquipmentSkillBonus(char, dodgeSkill.name)
+                    const injuryPenalty = getCharacterSkillPenaltyBlips(characterInjuries, char.id, dodgeSkill.name)
+                    const baseSkillFormula = calculateSkillValue(
                       attributeValue,
                       dodgeSkill.bonusDice,
                       dodgeSkill.bonusSteps || 0,
                       dodgeSkill.isWeakened,
                       isLearned
                     )
-                    return skillDiceFormula
+                    const totalBlips =
+                      d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                    return formatD6Value(totalBlips)
                   }
                   return null
                 }
@@ -1024,14 +1260,18 @@ export default function SpielleiterPage() {
                   if (meleeSkill) {
                     const attributeValue = char.attributes[meleeSkill.attribute] || '1D'
                     const isLearned = meleeSkill.bonusDice > 0 || (meleeSkill.specializations && meleeSkill.specializations.some(s => s.blibs > 0))
-                    const skillDiceFormula = calculateSkillValue(
+                    const equipmentBonus = getEquipmentSkillBonus(char, meleeSkill.name)
+                    const injuryPenalty = getCharacterSkillPenaltyBlips(characterInjuries, char.id, meleeSkill.name)
+                    const baseSkillFormula = calculateSkillValue(
                       attributeValue,
                       meleeSkill.bonusDice,
                       meleeSkill.bonusSteps || 0,
                       meleeSkill.isWeakened,
                       isLearned
                     )
-                    return skillDiceFormula
+                    const totalBlips =
+                      d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                    return formatD6Value(totalBlips)
                   }
                   return null
                 }
@@ -1044,14 +1284,18 @@ export default function SpielleiterPage() {
                   if (rangedSkill) {
                     const attributeValue = char.attributes[rangedSkill.attribute] || '1D'
                     const isLearned = rangedSkill.bonusDice > 0 || (rangedSkill.specializations && rangedSkill.specializations.some(s => s.blibs > 0))
-                    const skillDiceFormula = calculateSkillValue(
+                    const equipmentBonus = getEquipmentSkillBonus(char, rangedSkill.name)
+                    const injuryPenalty = getCharacterSkillPenaltyBlips(characterInjuries, char.id, rangedSkill.name)
+                    const baseSkillFormula = calculateSkillValue(
                       attributeValue,
                       rangedSkill.bonusDice,
                       rangedSkill.bonusSteps || 0,
                       rangedSkill.isWeakened,
                       isLearned
                     )
-                    return skillDiceFormula
+                    const totalBlips =
+                      d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                    return formatD6Value(totalBlips)
                   }
                   return null
                 }
@@ -1690,7 +1934,7 @@ export default function SpielleiterPage() {
                 const hiddenChars = groupCharacters.filter(char => hiddenCharacters.has(char.id))
                 
                 // Sammle alle Fertigkeiten aus allen Charakteren
-                const allSkillsMap = new Map<string, Map<string, { character: Character; skill: any; specialization?: any; value: string }[]>>()
+                const allSkillsMap = new Map<string, Map<string, { character: Character; skill: any; specialization?: any; value: string; injuryPenalty: number }[]>>()
                 
                 groupCharacters.forEach(character => {
                   character.skills.forEach(skill => {
@@ -1703,13 +1947,18 @@ export default function SpielleiterPage() {
                     // Hauptfertigkeit
                     const attributeValue = character.attributes[attribute] || '1D'
                     const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some((s: any) => s.blibs > 0))
-                    const skillDiceFormula = calculateSkillValue(
+                    const equipmentBonus = getEquipmentSkillBonus(character, skill.name)
+                    const injuryPenalty = getCharacterSkillPenaltyBlips(characterInjuries, character.id, skill.name)
+                    const baseSkillFormula = calculateSkillValue(
                       attributeValue,
                       skill.bonusDice,
                       skill.bonusSteps || 0,
                       skill.isWeakened,
                       isLearned
                     )
+                    const totalBlips =
+                      d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                    const skillDiceFormula = formatD6Value(totalBlips)
                     
                     if (!skillsMap.has(skill.name)) {
                       skillsMap.set(skill.name, [])
@@ -1717,20 +1966,24 @@ export default function SpielleiterPage() {
                     skillsMap.get(skill.name)!.push({
                       character,
                       skill,
-                      value: skillDiceFormula
+                      value: skillDiceFormula,
+                      injuryPenalty
                     })
                     
                     // Spezialisierungen
                     if (skill.specializations && skill.specializations.length > 0) {
                       skill.specializations.forEach((spec: any) => {
                         const specBlibs = spec.blibs
-                        const specDiceFormula = calculateSkillValue(
+                        const baseSpecFormula = calculateSkillValue(
                           attributeValue,
                           skill.bonusDice,
                           (skill.bonusSteps || 0) + specBlibs,
                           skill.isWeakened,
                           isLearned
                         )
+                        const specTotalBlips =
+                          d6ToBlips(baseSpecFormula) + equipmentBonus - injuryPenalty
+                        const specDiceFormula = formatD6Value(specTotalBlips)
                         const specKey = `${skill.name} - ${spec.name}`
                         if (!skillsMap.has(specKey)) {
                           skillsMap.set(specKey, [])
@@ -1739,7 +1992,8 @@ export default function SpielleiterPage() {
                           character,
                           skill,
                           specialization: spec,
-                          value: specDiceFormula
+                          value: specDiceFormula,
+                          injuryPenalty
                         })
                       })
                     }
@@ -1874,7 +2128,7 @@ export default function SpielleiterPage() {
                                       return (
                                         <td key={char.id} className="text-white text-center p-2 border border-white/20 w-[140px]">
                                           {entry ? (
-                                            <div className="font-mono">
+                                            <div className={`font-mono ${entry.injuryPenalty > 0 ? 'text-red-300' : ''}`}>
                                               {formatD6Value(entry.value)}
                                             </div>
                                           ) : (
@@ -3176,6 +3430,42 @@ export default function SpielleiterPage() {
             {/* Fantasie-Kalender Start-Datum */}
             {groupId && (
               <FantasyCalendarStartDate groupId={groupId} />
+            )}
+
+            {/* Druckblatt Anpassungen */}
+            {groupId && (
+              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-xl">
+                <h2 className="text-2xl font-bold text-white mb-4">Druckblatt-Anpassung</h2>
+                <p className="text-white/70 mb-4">
+                  Hinweise fuer die Druckversion (z.B. Preisliste, Verwundungssystem, Sonderregeln).
+                </p>
+                <textarea
+                  value={printNotes}
+                  onChange={(e) => setPrintNotes(e.target.value)}
+                  rows={4}
+                  placeholder="z.B. Stand 2026-01: Neue Verwundungen + Shop-Preise..."
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+                <div className="mt-3 flex gap-3">
+                  <button
+                    onClick={async () => {
+                      if (!groupId) return
+                      const current = await getGroupSettings(groupId)
+                      const nextSettings = {
+                        ...(current || settings),
+                        printNotes: printNotes.trim(),
+                      }
+                      const ok = await saveGroupSettings(groupId, nextSettings)
+                      if (!ok) {
+                        console.warn('Failed to save print notes to group settings.')
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    Speichern
+                  </button>
+                </div>
+              </div>
             )}
             
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
