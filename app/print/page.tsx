@@ -34,6 +34,7 @@ const printStyles = `
   margin: 12mm;
 }
 @media print {
+  .no-print { display: none !important; }
   .page {
     page-break-after: always;
   }
@@ -60,9 +61,19 @@ body { margin: 0; font-family: Arial, sans-serif; color: #111; }
 
 export default function PrintPage() {
   const [printNotes, setPrintNotes] = useState('')
+  const [printTitle, setPrintTitle] = useState('')
 
   useEffect(() => {
     const load = async () => {
+      const now = new Date()
+      const yy = String(now.getFullYear()).slice(-2)
+      const mm = String(now.getMonth() + 1).padStart(2, '0')
+      const dd = String(now.getDate()).padStart(2, '0')
+      const title = `Char-${yy}${mm}${dd}`
+      setPrintTitle(title)
+      if (typeof document !== 'undefined') {
+        document.title = title
+      }
       const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
       if (!groupId) return
       const settings = await getGroupSettings(groupId)
@@ -81,6 +92,24 @@ export default function PrintPage() {
   return (
     <div>
       <style>{printStyles}</style>
+      <div className="no-print" style={{ padding: 12, display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => window.print()}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 6,
+            background: '#1d4ed8',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Als PDF drucken
+        </button>
+        <div style={{ fontSize: 12, color: '#555', alignSelf: 'center' }}>
+          Vorschlag Dateiname: {printTitle}
+        </div>
+      </div>
       <div className="page">
         <div className="section">
           <div className="section-title">Kopfdaten</div>

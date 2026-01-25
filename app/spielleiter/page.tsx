@@ -3464,6 +3464,14 @@ export default function SpielleiterPage() {
                   >
                     Speichern
                   </button>
+                  <button
+                    onClick={() => {
+                      window.open('/print', '_blank', 'noopener,noreferrer')
+                    }}
+                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    Druckansicht öffnen
+                  </button>
                 </div>
               </div>
             )}
