@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { getSkillsByAttribute } from '@/lib/skills'
-import { getGroupSettings } from '@/lib/supabase-data'
+import { getAvailableSkills } from '@/lib/data'
+import { getAvailableSkillsFromSupabase, getGroupSettings } from '@/lib/supabase-data'
 
-const ATTRIBUTES = ['Reflexe', 'Koordination', 'Staerke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung']
+const ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung']
 const EQUIPMENT_SLOTS = [
   { id: 'head', label: 'Kopf' },
   { id: 'neck', label: 'Hals' },
@@ -22,10 +23,10 @@ const EQUIPMENT_SLOTS = [
   { id: 'belt', label: 'Guertel' },
 ]
 
-const buildSkillRows = (attribute: string) => {
-  const skills = getSkillsByAttribute(attribute).map((name) => ({ name }))
-  const blanks = Array.from({ length: 5 }, (_, idx) => ({ name: `______________ (${idx + 1})` }))
-  return [...skills, ...blanks]
+const buildSkillRows = (skills: string[]) => {
+  const rows = skills.map((name) => ({ name }))
+  const blanks = Array.from({ length: 5 }, () => ({ name: '______________' }))
+  return [...rows, ...blanks]
 }
 
 const printStyles = `
@@ -46,9 +47,13 @@ body { margin: 0; font-family: Arial, sans-serif; color: #111; }
 .section-title { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
 .fields { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .field { border-bottom: 1px solid #333; min-height: 22px; }
-.matrix { width: 100%; border-collapse: collapse; font-size: 11px; }
+.matrix { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
 .matrix th, .matrix td { border: 1px solid #333; padding: 4px; }
 .matrix th { background: #f2f2f2; }
+.matrix-wrapper { break-inside: avoid; page-break-inside: avoid; }
+.line-name { border-bottom: 1px solid #333; height: 12px; width: calc(100% - 5cm); }
+.line-cell { border-bottom: 1px solid #333; height: 12px; width: calc(100% - 5mm); margin: 0 auto; }
+.header-center { text-align: center; }
 .a4-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; }
 .paperdoll { position: relative; height: 320px; border: 1px solid #222; }
 .silhouette { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); width: 120px; height: 220px; border: 1px dashed #666; }
@@ -62,6 +67,7 @@ body { margin: 0; font-family: Arial, sans-serif; color: #111; }
 export default function PrintPage() {
   const [printNotes, setPrintNotes] = useState('')
   const [printTitle, setPrintTitle] = useState('')
+  const [skillsByAttribute, setSkillsByAttribute] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     const load = async () => {
@@ -78,6 +84,33 @@ export default function PrintPage() {
       if (!groupId) return
       const settings = await getGroupSettings(groupId)
       setPrintNotes(settings?.printNotes || '')
+      const supabaseSkills = await getAvailableSkillsFromSupabase(groupId)
+      if (supabaseSkills.length > 0) {
+        const grouped: Record<string, string[]> = {}
+        supabaseSkills.forEach((skill) => {
+          const attr = skill.attribute
+          if (!grouped[attr]) grouped[attr] = []
+          grouped[attr].push(skill.name)
+        })
+        Object.keys(grouped).forEach((attr) => {
+          grouped[attr] = grouped[attr].sort((a, b) => a.localeCompare(b, 'de'))
+        })
+        setSkillsByAttribute(grouped)
+        return
+      }
+      const localSkills = getAvailableSkills()
+      if (localSkills.length > 0) {
+        const grouped: Record<string, string[]> = {}
+        localSkills.forEach((skill) => {
+          const attr = skill.attribute
+          if (!grouped[attr]) grouped[attr] = []
+          grouped[attr].push(skill.name)
+        })
+        Object.keys(grouped).forEach((attr) => {
+          grouped[attr] = grouped[attr].sort((a, b) => a.localeCompare(b, 'de'))
+        })
+        setSkillsByAttribute(grouped)
+      }
     }
     load()
   }, [])
@@ -85,9 +118,9 @@ export default function PrintPage() {
   const matrix = useMemo(() => {
     return ATTRIBUTES.map((attr) => ({
       attr,
-      rows: buildSkillRows(attr),
+      rows: buildSkillRows(skillsByAttribute[attr] || getSkillsByAttribute(attr)),
     }))
-  }, [])
+  }, [skillsByAttribute])
 
   return (
     <div>
@@ -111,6 +144,14 @@ export default function PrintPage() {
         </div>
       </div>
       <div className="page">
+        <div className="section" style={{ textAlign: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/fallcrest-logo.png"
+            alt="Fallcrest"
+            style={{ maxHeight: '32mm', width: 'auto' }}
+          />
+        </div>
         <div className="section">
           <div className="section-title">Kopfdaten</div>
           <div className="fields">
@@ -125,35 +166,45 @@ export default function PrintPage() {
         <div className="section">
           <div className="section-title">Attribut- & Fertigkeits-Matrix</div>
           {matrix.map((group) => (
-            <table key={group.attr} className="matrix">
-              <thead>
-                <tr>
-                  <th colSpan={7}>{group.attr}</th>
-                </tr>
-                <tr>
-                  <th>Fertigkeit</th>
-                  <th>Steigerung</th>
-                  <th>Kosten</th>
-                  <th>Wert (Basis)</th>
-                  <th>Boni</th>
-                  <th>Mali</th>
-                  <th>AKTUELL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.rows.map((row, idx) => (
-                  <tr key={`${group.attr}-${idx}`}>
-                    <td>{row.name}</td>
-                    <td>_____</td>
-                    <td>_____</td>
-                    <td>_____</td>
-                    <td>_____</td>
-                    <td>_____</td>
-                    <td>_____</td>
+            <div key={group.attr} className="matrix-wrapper">
+              <table className="matrix">
+                <colgroup>
+                  {Array.from({ length: 8 }).map((_, idx) => (
+                    <col key={`${group.attr}-col-${idx}`} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th colSpan={8}>{group.attr}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                  <tr>
+                    <th colSpan={2} style={{ textAlign: 'left' }}>Fertigkeit</th>
+                    <th className="header-center">Steigerung</th>
+                    <th className="header-center">Kosten</th>
+                    <th className="header-center">Wert (Basis)</th>
+                    <th className="header-center">Boni</th>
+                    <th className="header-center">Mali</th>
+                    <th className="header-center">AKTUELL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row, idx) => (
+                    <tr key={`${group.attr}-${idx}`}>
+                      <td colSpan={2} style={{ textAlign: 'left' }}>
+                        <div>{row.name}</div>
+                        <div className="line-name" />
+                      </td>
+                      <td><div className="line-cell" /></td>
+                      <td><div className="line-cell" /></td>
+                      <td><div className="line-cell" /></td>
+                      <td><div className="line-cell" /></td>
+                      <td><div className="line-cell" /></td>
+                      <td><div className="line-cell" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ))}
         </div>
       </div>
