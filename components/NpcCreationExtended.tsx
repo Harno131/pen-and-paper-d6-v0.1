@@ -160,6 +160,8 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
         body: JSON.stringify({
           type: 'portrait',
           data: {
+            name,
+            entityType: 'npc',
             race,
             className,
             age: undefined,

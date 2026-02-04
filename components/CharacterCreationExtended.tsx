@@ -299,6 +299,8 @@ export default function CharacterCreationExtended({
         body: JSON.stringify({
           type: 'portrait',
           data: {
+            name: characterName,
+            entityType: 'character',
             race: resolvedRace,
             className: resolvedClass,
             age,
@@ -308,14 +310,30 @@ export default function CharacterCreationExtended({
           },
         }),
       })
-      const json = await response.json()
-      if (response.ok && json?.imageUrl) {
+      let rawText = ''
+      let json: any = null
+      try {
+        rawText = await response.text()
+        json = rawText ? JSON.parse(rawText) : null
+      } catch (parseError) {
+        console.warn('Portrait response parse failed.', { status: response.status, rawText })
+      }
+      if (!response.ok) {
+        console.warn('Portrait generation failed.', { status: response.status, rawText })
+        const reason = typeof json?.error === 'string'
+          ? json.error
+          : json?.details || `Bild konnte nicht generiert werden. (Status ${response.status})`
+        setProfileImageError(reason)
+        return
+      }
+      if (json?.imageUrl) {
         setProfileImageUrl(json.imageUrl)
         setProfileImageSaved(false)
       } else {
+        console.warn('Portrait generation response missing imageUrl.', { status: response.status, rawText })
         const reason = typeof json?.error === 'string'
           ? json.error
-          : json?.details || 'Bild konnte nicht generiert werden.'
+          : json?.details || `Bild konnte nicht generiert werden. (Status ${response.status})`
         setProfileImageError(reason)
       }
     } catch (error) {

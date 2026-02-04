@@ -1889,6 +1889,7 @@ export default function SpielerPage() {
                               type: 'event',
                               data: {
                                 text: newJournalEntry.content,
+                                dateLabel: new Date().toISOString().slice(0, 10),
                               },
                               fallcrestFilter: journalFallcrestFilter,
                             }),

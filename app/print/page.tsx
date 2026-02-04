@@ -5,7 +5,7 @@ import { getSkillsByAttribute } from '@/lib/skills'
 import { getAvailableSkills } from '@/lib/data'
 import { getAvailableSkillsFromSupabase, getGroupSettings } from '@/lib/supabase-data'
 
-const ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung']
+const ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie']
 const EQUIPMENT_SLOTS = [
   { id: 'head', label: 'Kopf' },
   { id: 'neck', label: 'Hals' },
@@ -23,8 +23,13 @@ const EQUIPMENT_SLOTS = [
   { id: 'belt', label: 'Guertel' },
 ]
 
+const stripSkillOrder = (name: string) => {
+  const trimmed = name.trim()
+  const match = trimmed.match(/^\s*\d+[\).\s-]+(.+)$/)
+  return match ? match[1].trim() : trimmed
+}
 const buildSkillRows = (skills: string[]) => {
-  const rows = skills.map((name) => ({ name }))
+  const rows = skills.map((name) => ({ name: stripSkillOrder(name) }))
   const blanks = Array.from({ length: 5 }, () => ({ name: '______________' }))
   return [...rows, ...blanks]
 }
@@ -48,11 +53,9 @@ body { margin: 0; font-family: Arial, sans-serif; color: #111; }
 .fields { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .field { border-bottom: 1px solid #333; min-height: 22px; }
 .matrix { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
-.matrix th, .matrix td { border: 1px solid #333; padding: 4px; }
+.matrix th, .matrix td { border: 1px solid #333; padding: 2px; height: 16px; }
 .matrix th { background: #f2f2f2; }
 .matrix-wrapper { break-inside: avoid; page-break-inside: avoid; }
-.line-name { border-bottom: 1px solid #333; height: 12px; width: calc(100% - 5cm); }
-.line-cell { border-bottom: 1px solid #333; height: 12px; width: calc(100% - 5mm); margin: 0 auto; }
 .header-center { text-align: center; }
 .a4-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; }
 .paperdoll { position: relative; height: 320px; border: 1px solid #222; }
@@ -153,7 +156,6 @@ export default function PrintPage() {
           />
         </div>
         <div className="section">
-          <div className="section-title">Kopfdaten</div>
           <div className="fields">
             <div>Name: <div className="field" /></div>
             <div>Volk: <div className="field" /></div>
@@ -164,7 +166,6 @@ export default function PrintPage() {
         </div>
 
         <div className="section">
-          <div className="section-title">Attribut- & Fertigkeits-Matrix</div>
           {matrix.map((group) => (
             <div key={group.attr} className="matrix-wrapper">
               <table className="matrix">
@@ -177,6 +178,8 @@ export default function PrintPage() {
                   <tr>
                     <th colSpan={8}>{group.attr}</th>
                   </tr>
+                </thead>
+                <tbody>
                   <tr>
                     <th colSpan={2} style={{ textAlign: 'left' }}>Fertigkeit</th>
                     <th className="header-center">Steigerung</th>
@@ -186,20 +189,28 @@ export default function PrintPage() {
                     <th className="header-center">Mali</th>
                     <th className="header-center">AKTUELL</th>
                   </tr>
-                </thead>
-                <tbody>
+                  <tr>
+                    <td colSpan={2} style={{ textAlign: 'left' }}>
+                      Attributwert: {group.attr}
+                    </td>
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                  </tr>
                   {group.rows.map((row, idx) => (
                     <tr key={`${group.attr}-${idx}`}>
                       <td colSpan={2} style={{ textAlign: 'left' }}>
                         <div>{row.name}</div>
-                        <div className="line-name" />
                       </td>
-                      <td><div className="line-cell" /></td>
-                      <td><div className="line-cell" /></td>
-                      <td><div className="line-cell" /></td>
-                      <td><div className="line-cell" /></td>
-                      <td><div className="line-cell" /></td>
-                      <td><div className="line-cell" /></td>
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                      <td />
                     </tr>
                   ))}
                 </tbody>

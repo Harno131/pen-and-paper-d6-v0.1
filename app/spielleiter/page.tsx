@@ -2543,6 +2543,7 @@ export default function SpielleiterPage() {
                               type: 'event',
                               data: {
                                 text: newJournalEntry.content,
+                                dateLabel: previewEntryLabel,
                               },
                               fallcrestFilter: journalFallcrestFilter,
                             }),
