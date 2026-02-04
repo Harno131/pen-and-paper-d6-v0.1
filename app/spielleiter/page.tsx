@@ -166,6 +166,15 @@ export default function SpielleiterPage() {
       .replace(/ö/g, 'oe')
       .replace(/ü/g, 'ue')
       .replace(/ß/g, 'ss')
+  const buildSkillDescriptionMap = (skills: Skill[]) => {
+    const map: Record<string, string> = {}
+    skills.forEach((skill) => {
+      const desc = (skill.description || '').trim()
+      if (!desc) return
+      map[normalizeSkillKey(skill.name)] = desc
+    })
+    return map
+  }
   const getEquipmentSkillBonus = (character: Character, skillName: string): number => {
     const target = normalizeSkillKey(skillName)
     let total = 0
@@ -410,7 +419,7 @@ export default function SpielleiterPage() {
     setJournalEntries(entries)
     setSharedImages(getSharedImages())
     setDiceRolls(getDiceRolls())
-    setAvailableSkills(getAvailableSkills())
+    const localSkills = getAvailableSkills()
     setSettings(getCharacterCreationSettings())
     const storageError = getStorageError()
     if (storageError) {
@@ -437,10 +446,39 @@ export default function SpielleiterPage() {
         setFantasyCalendarStart(null)
       }
       setPrintNotes(groupSettings?.printNotes || '')
+      const persistedDescriptions = groupSettings?.skillDescriptions || {}
+      const localDescriptions = buildSkillDescriptionMap(localSkills)
+      const mergedDescriptions = {
+        ...persistedDescriptions,
+        ...localDescriptions,
+      }
+      if (Object.keys(mergedDescriptions).length > 0) {
+        const nextSettings = {
+          ...(groupSettings || settings),
+          skillDescriptions: mergedDescriptions,
+        }
+        const sameDescriptions =
+          JSON.stringify(persistedDescriptions) === JSON.stringify(mergedDescriptions)
+        if (!sameDescriptions) {
+          const ok = await saveGroupSettings(currentGroupId, nextSettings)
+          if (!ok) {
+            console.warn('Failed to persist skill descriptions to group settings.')
+          }
+        }
+      }
+      const withDescriptions = localSkills.map((skill) => {
+        if (skill.description) return skill
+        const key = normalizeSkillKey(skill.name)
+        const desc = mergedDescriptions[key]
+        return desc ? { ...skill, description: desc } : skill
+      })
+      setAvailableSkills(withDescriptions)
+      saveAvailableSkills(withDescriptions)
     } else {
       setInjuryTemplates([])
       setCharacterInjuries([])
       setPrintNotes('')
+      setAvailableSkills(localSkills)
     }
   }, [groupId])
 

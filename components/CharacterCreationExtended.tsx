@@ -241,7 +241,7 @@ export default function CharacterCreationExtended({
     .filter(Boolean)
   const traitCount = traitList.length
   const wordCount = charTraits.trim() ? charTraits.trim().split(/\s+/).length : 0
-  const canGenerateProfileImage = (traitCount >= 5 || wordCount >= 50) && traitCount <= 5 && !profileImageUrl
+  const canGenerateProfileImage = traitCount <= 5 && !!characterName.trim() && !profileImageUrl
 
   const getAttributeScore = (value: string): number => {
     const { diceCount, modifier } = parseD6Value(value)
@@ -270,6 +270,8 @@ export default function CharacterCreationExtended({
       .sort((a, b) => b.score - a.score)
       .slice(0, 2)
   }
+
+  const formatBlibCost = (cost: number) => `${cost} Blib${cost === 1 ? '' : 's'}`
 
   const parseSkillName = (name: string) => {
     const trimmed = name.trim()
@@ -872,6 +874,7 @@ export default function CharacterCreationExtended({
                   const bonus = attributeBonuses[attr] || 0
                   const stepBonus = attributeStepBonuses[attr] || 0
                   const isSelectedAttr = attrSkills.some(s => s.id === newSpecialization.skillId)
+                  const attributeCost = calculateStepCost(getAttributeSteps(attr))
 
                   return (
                     <div key={attr} className="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -933,6 +936,7 @@ export default function CharacterCreationExtended({
                         </div>
                         <div className="text-center">
                           <span className="font-mono tabular-nums text-green-400">{attributeValue}</span>
+                          <span className="ml-2 text-sky-400 text-xs font-semibold">({formatBlibCost(attributeCost)})</span>
                         </div>
                       </div>
 
@@ -950,6 +954,7 @@ export default function CharacterCreationExtended({
                             skill.isWeakened,
                             learned
                           )
+                          const skillCost = calculateStepCost(getSkillSteps(skill.id))
                           return (
                             <div key={skill.id} className="bg-white/5 rounded p-3 border border-white/10">
                               <div className="grid grid-cols-4 items-center gap-4">
@@ -1005,6 +1010,7 @@ export default function CharacterCreationExtended({
                                   <span className={`font-mono tabular-nums ${bonus > 0 || characterSkill.specializations.length > 0 ? 'text-green-400' : 'text-white/50'}`}>
                                     {skillValue}
                                   </span>
+                                  <span className="ml-2 text-sky-400 text-xs font-semibold">({formatBlibCost(skillCost)})</span>
                                 </div>
                               </div>
 
@@ -1015,6 +1021,7 @@ export default function CharacterCreationExtended({
                                   {characterSkill.specializations.map((spec) => {
                                     const totalBlibs = (skillStepBonuses[skill.id] || 0) + (spec.blibs || 0)
                                     const specValue = calculateSkillValue(attributeValue, bonus, totalBlibs, skill.isWeakened, learned)
+                                    const specCost = calculateStepCost(spec.blibs || 0)
 
                                     return (
                                       <div key={spec.id} className="grid grid-cols-4 items-center gap-4 bg-white/10 rounded p-3 border border-white/10">
@@ -1046,6 +1053,7 @@ export default function CharacterCreationExtended({
                                           <span className={`font-mono tabular-nums ${totalBlibs > 0 ? 'text-green-400' : 'text-white/50'}`}>
                                             {specValue}
                                           </span>
+                                          <span className="ml-2 text-sky-400 text-xs font-semibold">({formatBlibCost(specCost)})</span>
                                         </div>
                                       </div>
                                     )

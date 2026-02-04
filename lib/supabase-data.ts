@@ -614,7 +614,8 @@ export const getGroupSettings = async (groupId: string): Promise<CharacterCreati
     maxSkillDicePerSkill: 3,
     maxBlibsPerSpecialization: 3,
     defaultStartBlips: settings.defaultStartBlips || 67,
-    printNotes: settings.printNotes || ''
+    printNotes: settings.printNotes || '',
+    skillDescriptions: settings.skillDescriptions || {}
   }
 }
 

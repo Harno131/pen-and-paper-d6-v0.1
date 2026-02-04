@@ -1,4 +1,5 @@
 import { Skill } from '@/types'
+import { formatD6Value } from '@/lib/dice'
 
 // Fertigkeiten basierend auf Georg-Blatt (Zeilen 32-135)
 // Basiswert = Attributwert, kann mit bis zu 8 D6 erhöht werden
@@ -121,15 +122,9 @@ export function calculateSkillValue(
     baseDice = Math.max(0, baseDice - 3)
   }
   
-  // Addiere Bonus-D6
-  baseDice += bonusDice
-  
-  // Addiere Blibs
-  const blibBonus = blibsToModifier(blibs)
-  baseDice += blibBonus.diceBonus
-  const totalModifier = baseModifier + blibBonus.modifier
-  
-  return `${baseDice}D${totalModifier > 0 ? `+${totalModifier}` : ''}`
+  const baseBlips = baseDice * 3 + baseModifier
+  const totalBlips = Math.max(0, baseBlips + bonusDice * 3 + blibs)
+  return formatD6Value(totalBlips)
 }
 
 export function getBaseSkillBlibs(skill: Pick<Skill, 'specializations'>): number {

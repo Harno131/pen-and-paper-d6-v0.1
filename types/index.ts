@@ -228,6 +228,7 @@ export interface CharacterCreationSettings {
   defaultStartBlips: number // Standard: 67
   fantasyCalendar?: FantasyCalendarSettings
   printNotes?: string
+  skillDescriptions?: Record<string, string>
 }
 
 export interface FantasyCalendarSettings {
