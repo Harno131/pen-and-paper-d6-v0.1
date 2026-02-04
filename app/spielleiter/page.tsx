@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary } from '@/types'
+import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary, ShopItem } from '@/types'
 import {
   getCharacters,
   saveCharacters,
@@ -25,13 +25,13 @@ import {
   getStorageError,
   clearStorageError,
 } from '@/lib/data'
-import { getGroupSettings, saveGroupSettings, getBestiary, upsertBestiary, removeBestiary, getInjuryTemplates, getCharacterInjuries, upsertCharacterInjury, removeCharacterInjury } from '@/lib/supabase-data'
+import { getGroupSettings, saveGroupSettings, getBestiary, upsertBestiary, removeBestiary, getInjuryTemplates, getCharacterInjuries, upsertCharacterInjury, removeCharacterInjury, getInventoryItems, saveInventoryItem, removeInventoryItem } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue } from '@/lib/skills'
-import { d6ToBlips, formatD6Value } from '@/lib/dice'
+import { d6ToBlips, formatD6Value, parseD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getWeekdayInfo, TIMES_OF_DAY, MONTHS, createFantasyDate, type FantasyDate } from '@/lib/fantasy-calendar'
-import { formatCopper } from '@/lib/money'
+import { formatCopper, formatCurrency } from '@/lib/money'
 import { getAlignment } from '@/lib/alignments'
 import FantasyCalendarStartDate from '@/components/FantasyCalendarStartDate'
 import NameGenerator from '@/components/NameGenerator'
@@ -39,6 +39,8 @@ import NpcCreationExtended from '@/components/NpcCreationExtended'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 import { createSupabaseClient } from '@/lib/supabase'
 import { getCharacterSkillPenaltyBlips } from '@/lib/injuries'
+import { enqueueRulebookReview, getRulebookSkills, getRulebookSpecializations } from '@/lib/rulebook'
+import { getDefaultShopItems } from '@/lib/shop'
 
 const BESTIARY_ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'] as const
 const DEFAULT_MONSTER_ATTRIBUTES = {
@@ -54,7 +56,7 @@ const DEFAULT_MONSTER_ATTRIBUTES = {
 export default function SpielleiterPage() {
   const MAX_SHARED_IMAGE_BYTES = 2 * 1024 * 1024
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'overview' | 'deleted' | 'journal' | 'images' | 'skills' | 'settings' | 'bestiary'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'deleted' | 'journal' | 'images' | 'skills' | 'settings' | 'bestiary' | 'shop'>('overview')
   const [characters, setCharacters] = useState<Character[]>([])
   const [deletedCharacters, setDeletedCharacters] = useState<DeletedCharacter[]>([])
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
@@ -129,6 +131,20 @@ export default function SpielleiterPage() {
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('asc')
+  const [showOverviewOptions, setShowOverviewOptions] = useState(false)
+  const [sortOverviewByBlips, setSortOverviewByBlips] = useState(false)
+  const [showPossibleSpecializations, setShowPossibleSpecializations] = useState(false)
+  const [rulebookSpecializations, setRulebookSpecializations] = useState<any[]>([])
+  const [shopItems, setShopItems] = useState<ShopItem[]>([])
+  const [shopError, setShopError] = useState('')
+  const [newShopItem, setNewShopItem] = useState({
+    name: '',
+    category: 'equipment' as ShopItem['category'],
+    priceCopper: 0,
+    slot: '',
+    twoHanded: false,
+    description: '',
+  })
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
     if (!filter) return true
@@ -166,6 +182,33 @@ export default function SpielleiterPage() {
       .replace(/ö/g, 'oe')
       .replace(/ü/g, 'ue')
       .replace(/ß/g, 'ss')
+  const getSkillMapKey = (name: string, attribute: string) =>
+    `${normalizeSkillKey(attribute)}::${normalizeSkillKey(name)}`
+  const BASE_VALUES: Record<string, string> = {
+    Reflexe: '2D',
+    Koordination: '2D',
+    Stärke: '2D',
+    Wissen: '2D',
+    Wahrnehmung: '2D',
+    Ausstrahlung: '2D',
+    Magie: '0D',
+  }
+  const getStepsFromD6 = (value: string): number => {
+    const { diceCount, modifier } = parseD6Value(value)
+    return diceCount * 3 + modifier
+  }
+  const calculateStepCost = (totalSteps: number): number => {
+    let totalBlips = 0
+    for (let i = 1; i <= totalSteps; i += 1) {
+      totalBlips += Math.ceil(i / 3)
+    }
+    return totalBlips
+  }
+  const getAttributeCost = (attribute: string, value: string): number => {
+    const base = BASE_VALUES[attribute] || '2D'
+    const steps = Math.max(0, getStepsFromD6(value) - getStepsFromD6(base))
+    return calculateStepCost(steps)
+  }
   const buildSkillDescriptionMap = (skills: Skill[]) => {
     const map: Record<string, string> = {}
     skills.forEach((skill) => {
@@ -174,6 +217,29 @@ export default function SpielleiterPage() {
       map[normalizeSkillKey(skill.name)] = desc
     })
     return map
+  }
+  const mergeRulebookSkills = (
+    localSkills: Skill[],
+    rulebookSkills: Array<{ name: string; attribute: string; description: string }>
+  ) => {
+    const merged = [...localSkills]
+    const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
+    rulebookSkills.forEach((skill) => {
+      const key = getSkillMapKey(skill.name, skill.attribute)
+      if (existingKeys.has(key)) return
+      merged.push({
+        id: `rulebook-${normalizeSkillKey(skill.attribute)}-${normalizeSkillKey(skill.name)}`,
+        name: skill.name,
+        attribute: skill.attribute,
+        bonusDice: 0,
+        bonusSteps: 0,
+        specializations: [],
+        isWeakened: false,
+        isCustom: false,
+        description: skill.description,
+      })
+    })
+    return merged
   }
   const getEquipmentSkillBonus = (character: Character, skillName: string): number => {
     const target = normalizeSkillKey(skillName)
@@ -437,6 +503,8 @@ export default function SpielleiterPage() {
       setCharacterInjuries(injuries)
 
       const groupSettings = await getGroupSettings(currentGroupId)
+      const shopItems = await getInventoryItems(currentGroupId)
+      setShopItems(shopItems.length > 0 ? shopItems : getDefaultShopItems())
       if (groupSettings?.fantasyCalendar) {
         setFantasyCalendarStart({
           startDate: groupSettings.fantasyCalendar.startDate,
@@ -448,7 +516,17 @@ export default function SpielleiterPage() {
       setPrintNotes(groupSettings?.printNotes || '')
       const persistedDescriptions = groupSettings?.skillDescriptions || {}
       const localDescriptions = buildSkillDescriptionMap(localSkills)
+      const rulebookSkills = await getRulebookSkills()
+      const rulebookSpecs = await getRulebookSpecializations()
+      setRulebookSpecializations(rulebookSpecs)
+      const rulebookDescriptions = rulebookSkills.reduce<Record<string, string>>((acc, skill) => {
+        const desc = (skill.description || '').trim()
+        if (!desc) return acc
+        acc[normalizeSkillKey(skill.name)] = desc
+        return acc
+      }, {})
       const mergedDescriptions = {
+        ...rulebookDescriptions,
         ...persistedDescriptions,
         ...localDescriptions,
       }
@@ -466,7 +544,8 @@ export default function SpielleiterPage() {
           }
         }
       }
-      const withDescriptions = localSkills.map((skill) => {
+      const mergedSkills = mergeRulebookSkills(localSkills, rulebookSkills)
+      const withDescriptions = mergedSkills.map((skill) => {
         if (skill.description) return skill
         const key = normalizeSkillKey(skill.name)
         const desc = mergedDescriptions[key]
@@ -479,6 +558,8 @@ export default function SpielleiterPage() {
       setCharacterInjuries([])
       setPrintNotes('')
       setAvailableSkills(localSkills)
+      setRulebookSpecializations([])
+      setShopItems([])
     }
   }, [groupId])
 
@@ -734,6 +815,71 @@ export default function SpielleiterPage() {
     }
   }
 
+  const handleAddShopItem = async () => {
+    setShopError('')
+    if (!newShopItem.name.trim()) {
+      setShopError('Bitte einen Namen eingeben.')
+      return
+    }
+    const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
+    const createdBy = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
+    const item: ShopItem = {
+      id: `shop-${Date.now()}`,
+      name: newShopItem.name.trim(),
+      category: newShopItem.category,
+      priceCopper: Math.max(0, Number(newShopItem.priceCopper) || 0),
+      slot: newShopItem.slot ? newShopItem.slot.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      twoHanded: newShopItem.twoHanded,
+      description: newShopItem.description.trim() || undefined,
+      isCustom: true,
+      createdBy: createdBy || undefined,
+      groupId: groupId || undefined,
+    }
+    const ok = await saveInventoryItem(item, groupId)
+    if (!ok) {
+      setShopError('Gegenstand konnte nicht gespeichert werden.')
+      return
+    }
+    setNewShopItem({
+      name: '',
+      category: 'equipment',
+      priceCopper: 0,
+      slot: '',
+      twoHanded: false,
+      description: '',
+    })
+    const items = await getInventoryItems(groupId)
+    setShopItems(items.length > 0 ? items : getDefaultShopItems())
+  }
+
+  const handleRemoveShopItem = async (itemId: string) => {
+    const ok = await removeInventoryItem(itemId)
+    if (!ok) {
+      setShopError('Gegenstand konnte nicht gelöscht werden.')
+      return
+    }
+    const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
+    const items = await getInventoryItems(groupId)
+    setShopItems(items.length > 0 ? items : getDefaultShopItems())
+  }
+
+  const pushRulebookReview = async (skillName: string, attribute: string, description?: string) => {
+    if (!groupId) return
+    const resolvedDescription = (description || '').trim() || 'Neue Fertigkeit ohne Beschreibung.'
+    try {
+      await enqueueRulebookReview({
+        skillName,
+        attribute,
+        description: resolvedDescription,
+        sourceGroupId: groupId,
+        sourcePlayerName: gmNameLabel,
+        entryType: 'skill',
+      })
+    } catch (error) {
+      console.warn('Rule-Book-Review konnte nicht gespeichert werden.', error)
+    }
+  }
+
   const handleAddJournalEntry = async () => {
     if (!newJournalEntry.content.trim()) return
     if (isSavingJournal) return
@@ -942,6 +1088,16 @@ export default function SpielleiterPage() {
             }`}
           >
             ⚔️ Fertigkeiten verwalten
+          </button>
+          <button
+            onClick={() => setActiveTab('shop')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              activeTab === 'shop'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            🛒 Shop
           </button>
           <button
             onClick={() => setActiveTab('bestiary')}
@@ -1934,7 +2090,38 @@ export default function SpielleiterPage() {
 
                     {/* Fertigkeiten-Tabelle */}
                     <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                      <h2 className="text-2xl font-bold text-white mb-4">Fertigkeiten-Übersicht</h2>
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-2xl font-bold text-white">Fertigkeiten-Übersicht</h2>
+                        <button
+                          onClick={() => setShowOverviewOptions((prev) => !prev)}
+                          className="text-white/70 hover:text-white text-lg"
+                          title="Optionen"
+                        >
+                          ⚙️
+                        </button>
+                      </div>
+                      {showOverviewOptions && (
+                        <div className="mb-4 bg-white/5 rounded-lg p-4 border border-white/10 space-y-3">
+                          <label className="flex items-center gap-2 text-white/80 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={sortOverviewByBlips}
+                              onChange={(e) => setSortOverviewByBlips(e.target.checked)}
+                              className="rounded"
+                            />
+                            Attribute nach Blibs sortieren
+                          </label>
+                          <label className="flex items-center gap-2 text-white/80 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={showPossibleSpecializations}
+                              onChange={(e) => setShowPossibleSpecializations(e.target.checked)}
+                              className="rounded"
+                            />
+                            Mögliche Spezialisierungen anzeigen
+                          </label>
+                        </div>
+                      )}
               <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
               {(() => {
                 // Filtere nur Charaktere der aktuellen Gruppe
@@ -2044,6 +2231,16 @@ export default function SpielleiterPage() {
                 
                 // Standard-Attribute in der richtigen Reihenfolge
                 const STANDARD_ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie']
+                const attributeOrder = sortOverviewByBlips
+                  ? [...STANDARD_ATTRIBUTES].sort((a, b) => {
+                      const aCost = visibleCharacters.reduce((sum, char) =>
+                        sum + getAttributeCost(a, char.attributes[a] || '1D'), 0)
+                      const bCost = visibleCharacters.reduce((sum, char) =>
+                        sum + getAttributeCost(b, char.attributes[b] || '1D'), 0)
+                      if (bCost !== aCost) return bCost - aCost
+                      return a.localeCompare(b, 'de')
+                    })
+                  : STANDARD_ATTRIBUTES
                 
                 // Funktion zum Erstellen von Initialen
                 const getInitials = (name: string) => {
@@ -2052,7 +2249,7 @@ export default function SpielleiterPage() {
                 
                 return (
                   <div className="space-y-6">
-                    {STANDARD_ATTRIBUTES.map((attribute) => {
+                    {attributeOrder.map((attribute) => {
                       const skillsMap = allSkillsMap.get(attribute)
                       if (!skillsMap || skillsMap.size === 0) return null
                       
@@ -2159,7 +2356,18 @@ export default function SpielleiterPage() {
                                 {Array.from(skillsMap.entries()).map(([skillName, entries]) => (
                                   <tr key={skillName} className="hover:bg-white/5">
                                     <td className="bg-white/5 text-white p-2 border border-white/20 sticky left-0 z-10 w-[200px]">
-                                      {skillName}
+                                      <div className="font-medium">{skillName}</div>
+                                      {showPossibleSpecializations && (
+                                        <div className="mt-1 text-xs text-white/60 space-y-1">
+                                          {rulebookSpecializations
+                                            .filter((spec) => normalizeSkillKey(spec.skill_name) === normalizeSkillKey(skillName))
+                                            .map((spec) => (
+                                              <div key={`${spec.skill_name}-${spec.specialization_name}`}>
+                                                • {spec.specialization_name}
+                                              </div>
+                                            ))}
+                                        </div>
+                                      )}
                                     </td>
                                     {visibleCharacters.map(char => {
                                       const entry = entries.find(e => e.character.id === char.id)
@@ -2793,6 +3001,101 @@ export default function SpielleiterPage() {
           </div>
         )}
 
+        {/* Shop Tab */}
+        {activeTab === 'shop' && (
+          <div className="space-y-6">
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white">🛒 Shop-Katalog</h2>
+              </div>
+              {shopError && (
+                <div className="mb-4 text-red-300 text-sm">{shopError}</div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {shopItems.map((item) => (
+                  <div key={item.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-white font-semibold">{item.name}</div>
+                        <div className="text-white/70 text-sm">{formatCurrency(item.priceCopper)}</div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveShopItem(item.id)}
+                        className="text-red-300 hover:text-red-200 text-sm"
+                        title="Löschen"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {item.description && (
+                      <div className="text-white/60 text-sm mt-2">{item.description}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h3 className="text-xl font-semibold text-white mb-3">Neuen Gegenstand anlegen</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={newShopItem.name}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, name: e.target.value })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+                <select
+                  value={newShopItem.category}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, category: e.target.value as any })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                >
+                  <option value="weapon" className="bg-slate-800">Waffe</option>
+                  <option value="armor" className="bg-slate-800">Rüstung</option>
+                  <option value="equipment" className="bg-slate-800">Ausrüstung</option>
+                </select>
+                <input
+                  type="number"
+                  placeholder="Preis (Kupfer)"
+                  value={newShopItem.priceCopper}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, priceCopper: Number(e.target.value) })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Slot (z.B. head, torso, main_hand)"
+                  value={newShopItem.slot}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, slot: e.target.value })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+                <label className="flex items-center gap-2 text-white/80 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newShopItem.twoHanded}
+                    onChange={(e) => setNewShopItem({ ...newShopItem, twoHanded: e.target.checked })}
+                    className="rounded"
+                  />
+                  Zweihändig
+                </label>
+                <div />
+                <textarea
+                  placeholder="Beschreibung"
+                  value={newShopItem.description}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, description: e.target.value })}
+                  rows={2}
+                  className="md:col-span-2 px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+              </div>
+              <button
+                onClick={handleAddShopItem}
+                className="mt-3 px-4 py-2 rounded bg-primary-600 hover:bg-primary-700 text-white font-semibold"
+              >
+                Gegenstand speichern
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Images Tab */}
         {activeTab === 'images' && (
           <div className="space-y-6">
@@ -2993,6 +3296,11 @@ export default function SpielleiterPage() {
                                 isWeakened: editingSkill.isWeakened,
                                 description: editingSkill.description || undefined,
                               })
+                              pushRulebookReview(
+                                editingSkill.name.trim(),
+                                editingSkill.attribute,
+                                editingSkill.description || ''
+                              )
                               setEditingSkill(null)
                               loadData()
                             }
@@ -3029,6 +3337,11 @@ export default function SpielleiterPage() {
                               setStorageError(storageError || 'Fertigkeit konnte nicht gespeichert werden.')
                               return
                             }
+                            pushRulebookReview(
+                              newSkill.name.trim(),
+                              newSkill.attribute,
+                              newSkill.description || ''
+                            )
                             setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
                             loadData()
                           }

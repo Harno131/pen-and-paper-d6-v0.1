@@ -1,4 +1,4 @@
-import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary, InjuryTemplate, CharacterInjury, InjurySlot } from '@/types'
+import { Character, JournalEntry, SharedImage, DiceRoll, DeletedCharacter, Skill, CharacterCreationSettings, Bestiary, InjuryTemplate, CharacterInjury, InjurySlot, ShopItem } from '@/types'
 import { extractTagsFromText } from '@/lib/tags'
 import { createSupabaseClient } from './supabase'
 
@@ -588,6 +588,66 @@ export const removeSkillFromSupabase = async (groupId: string, skillId: string):
     .eq('id', skillId)
     .eq('group_id', groupId)
 
+  return !error
+}
+
+// Shop-Inventar
+export const getInventoryItems = async (groupId?: string | null): Promise<ShopItem[]> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return []
+  let query = supabase
+    .from('inventory_items')
+    .select('*')
+    .order('name', { ascending: true })
+  if (groupId) {
+    query = query.or(`group_id.is.null,group_id.eq.${groupId}`)
+  }
+  const { data, error } = await query
+  if (error || !data) return []
+  return data.map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    priceCopper: row.price_copper || 0,
+    slot: row.slot ? String(row.slot).split(',') : undefined,
+    twoHanded: row.two_handed || false,
+    description: row.description || undefined,
+    stats: row.stats || undefined,
+    groupId: row.group_id || undefined,
+    createdBy: row.created_by || undefined,
+    isCustom: row.is_custom || false,
+  }))
+}
+
+export const saveInventoryItem = async (item: ShopItem, groupId?: string | null): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+  const { error } = await supabase
+    .from('inventory_items')
+    .upsert({
+      id: item.id,
+      group_id: groupId || item.groupId || null,
+      name: item.name,
+      category: item.category,
+      price_copper: item.priceCopper || 0,
+      slot: Array.isArray(item.slot) ? item.slot.join(',') : item.slot || null,
+      two_handed: item.twoHanded || false,
+      description: item.description || null,
+      stats: item.stats || {},
+      created_by: item.createdBy || null,
+      is_custom: item.isCustom || false,
+      updated_at: new Date().toISOString(),
+    })
+  return !error
+}
+
+export const removeInventoryItem = async (itemId: string): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+  const { error } = await supabase
+    .from('inventory_items')
+    .delete()
+    .eq('id', itemId)
   return !error
 }
 

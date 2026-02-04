@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Character, JournalEntry, SharedImage, Item, EquipmentSlot } from '@/types'
+import { Character, JournalEntry, SharedImage, Item, EquipmentSlot, Skill, ShopItem } from '@/types'
 import { 
   getCharacters, 
   getJournalEntries, 
@@ -14,6 +14,8 @@ import {
   calculateCharacterPoints,
   getCharacterCreationSettings,
   calculateHitPoints,
+  getAvailableSkills,
+  saveAvailableSkills,
   getStorageError,
   clearStorageError,
 } from '@/lib/data'
@@ -21,15 +23,18 @@ import { getGroupSettings, getInjuryTemplates, getCharacterInjuries } from '@/li
 import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
 import { createSupabaseClient } from '@/lib/supabase'
 import { calculateSkillValue } from '@/lib/skills'
-import { d6ToBlips, formatD6Value } from '@/lib/dice'
+import { d6ToBlips, formatD6Value, parseD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, TIMES_OF_DAY, getSpecialEvent, getMonthInfo } from '@/lib/fantasy-calendar'
-import { formatCopper } from '@/lib/money'
+import { formatCopper, formatCurrency } from '@/lib/money'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import CharacterCreationExtended from '@/components/CharacterCreationExtended'
 import SkillDiceRoller from '@/components/SkillDiceRoller'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 import { getCharacterSkillPenaltyBlips } from '@/lib/injuries'
+import { getRulebookSkills, getRulebookSpecializations } from '@/lib/rulebook'
+import { getInventoryItems, saveInventoryItem } from '@/lib/supabase-data'
+import { getDefaultShopItems } from '@/lib/shop'
 
 export default function SpielerPage() {
   const parseSkillName = (name: string) => {
@@ -79,6 +84,42 @@ export default function SpielerPage() {
       .replace(/ö/g, 'oe')
       .replace(/ü/g, 'ue')
       .replace(/ß/g, 'ss')
+  const buildSkillDescriptionMap = (skills: { name: string; description?: string }[]) => {
+    const map: Record<string, string> = {}
+    skills.forEach((skill) => {
+      const desc = (skill.description || '').trim()
+      if (!desc) return
+      map[normalizeSkillKey(skill.name)] = desc
+    })
+    return map
+  }
+  const BASE_VALUES: Record<string, string> = {
+    Reflexe: '2D',
+    Koordination: '2D',
+    Stärke: '2D',
+    Wissen: '2D',
+    Wahrnehmung: '2D',
+    Ausstrahlung: '2D',
+    Magie: '0D',
+  }
+  const getStepsFromD6 = (value: string): number => {
+    const { diceCount, modifier } = parseD6Value(value)
+    return diceCount * 3 + modifier
+  }
+  const calculateStepCost = (totalSteps: number): number => {
+    let totalBlips = 0
+    for (let i = 1; i <= totalSteps; i += 1) {
+      totalBlips += Math.ceil(i / 3)
+    }
+    return totalBlips
+  }
+  const getAttributeCost = (attribute: string, value: string): number => {
+    const base = BASE_VALUES[attribute] || '2D'
+    const steps = Math.max(0, getStepsFromD6(value) - getStepsFromD6(base))
+    return calculateStepCost(steps)
+  }
+  const getSkillMapKey = (name: string, attribute: string) =>
+    `${normalizeSkillKey(attribute)}::${normalizeSkillKey(name)}`
   const [customSlots, setCustomSlots] = useState<{ id: EquipmentSlot; label: string }[]>([])
   const [newSlotId, setNewSlotId] = useState('')
   const [newSlotLabel, setNewSlotLabel] = useState('')
@@ -143,7 +184,7 @@ export default function SpielerPage() {
     return getCharacterSkillPenaltyBlips(characterInjuries, character.id, skillName)
   }
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'characters' | 'character' | 'skills' | 'equipment' | 'journal' | 'images'>('characters')
+  const [activeTab, setActiveTab] = useState<'characters' | 'character' | 'skills' | 'equipment' | 'journal' | 'images' | 'shop'>('characters')
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
   const [playerCharacters, setPlayerCharacters] = useState<Character[]>([])
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
@@ -173,6 +214,20 @@ export default function SpielerPage() {
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [showSkillOptions, setShowSkillOptions] = useState(false)
+  const [sortSkillsByBlips, setSortSkillsByBlips] = useState(false)
+  const [showPossibleSpecializations, setShowPossibleSpecializations] = useState(false)
+  const [rulebookSpecializations, setRulebookSpecializations] = useState<any[]>([])
+  const [shopItems, setShopItems] = useState<ShopItem[]>([])
+  const [shopError, setShopError] = useState('')
+  const [newShopItem, setNewShopItem] = useState({
+    name: '',
+    category: 'equipment' as ShopItem['category'],
+    priceCopper: 0,
+    slot: '',
+    twoHanded: false,
+    description: '',
+  })
   const [fantasyCalendarStart, setFantasyCalendarStart] = useState<{
     startDate?: { year: number; month: number; day: number }
     realStartDate?: string
@@ -240,10 +295,13 @@ export default function SpielerPage() {
     }
 
     if (groupId) {
+      const localSkills = getAvailableSkills()
       const templates = await getInjuryTemplates()
       setInjuryTemplates(templates)
       const injuries = await getCharacterInjuries(groupId)
       setCharacterInjuries(injuries)
+      const shopItems = await getInventoryItems(groupId)
+      setShopItems(shopItems.length > 0 ? shopItems : getDefaultShopItems())
 
       const groupSettings = await getGroupSettings(groupId)
       if (groupSettings?.fantasyCalendar) {
@@ -254,9 +312,53 @@ export default function SpielerPage() {
       } else {
         setFantasyCalendarStart(null)
       }
+      const persistedDescriptions = groupSettings?.skillDescriptions || {}
+      const localDescriptions = buildSkillDescriptionMap(localSkills)
+      const rulebookSkills = await getRulebookSkills()
+      const rulebookSpecs = await getRulebookSpecializations()
+      setRulebookSpecializations(rulebookSpecs)
+      const rulebookDescriptions = rulebookSkills.reduce<Record<string, string>>((acc, skill) => {
+        const desc = (skill.description || '').trim()
+        if (!desc) return acc
+        acc[normalizeSkillKey(skill.name)] = desc
+        return acc
+      }, {})
+      const mergedDescriptions = {
+        ...rulebookDescriptions,
+        ...persistedDescriptions,
+        ...localDescriptions,
+      }
+      if (Object.keys(mergedDescriptions).length > 0) {
+        const mergedSkills: Skill[] = [...localSkills]
+        const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
+        rulebookSkills.forEach((skill) => {
+          const key = getSkillMapKey(skill.name, skill.attribute)
+          if (existingKeys.has(key)) return
+          mergedSkills.push({
+            id: `rulebook-${normalizeSkillKey(skill.attribute)}-${key}`,
+            name: skill.name,
+            attribute: skill.attribute,
+            bonusDice: 0,
+            bonusSteps: 0,
+            specializations: [],
+            isWeakened: false,
+            isCustom: false,
+            description: skill.description,
+          })
+        })
+        const withDescriptions = mergedSkills.map((skill) => {
+          if (skill.description) return skill
+          const key = normalizeSkillKey(skill.name)
+          const desc = mergedDescriptions[key]
+          return desc ? { ...skill, description: desc } : skill
+        })
+        saveAvailableSkills(withDescriptions)
+      }
     } else {
       setInjuryTemplates([])
       setCharacterInjuries([])
+      setRulebookSpecializations([])
+      setShopItems([])
     }
   }, [selectedCharacter, groupId])
 
@@ -314,6 +416,76 @@ export default function SpielerPage() {
     } finally {
       setDebugLoading(false)
     }
+  }
+
+  const handleBuyItem = (item: ShopItem) => {
+    setShopError('')
+    if (!selectedCharacter) {
+      setShopError('Bitte zuerst einen Charakter auswählen.')
+      return
+    }
+    const currentCopper = selectedCharacter.copperCoins ?? 0
+    if (currentCopper < item.priceCopper) {
+      setShopError('Nicht genug Geld für diesen Kauf.')
+      return
+    }
+    const inventoryItem: Item = {
+      id: `shop-${Date.now()}`,
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      slot: item.slot ? item.slot : undefined,
+      twoHanded: item.twoHanded,
+      stats: item.stats,
+    }
+    const characters = getCharacters()
+    const updated = characters.map((char) => {
+      if (char.id !== selectedCharacter.id) return char
+      return {
+        ...char,
+        copperCoins: Math.max(0, currentCopper - item.priceCopper),
+        inventory: [...(char.inventory || []), inventoryItem],
+      }
+    })
+    saveCharacters(updated)
+    loadData()
+  }
+
+  const handleAddShopItem = async () => {
+    setShopError('')
+    if (!newShopItem.name.trim()) {
+      setShopError('Bitte einen Namen eingeben.')
+      return
+    }
+    const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
+    const createdBy = typeof window !== 'undefined' ? localStorage.getItem('playerName') : null
+    const item: ShopItem = {
+      id: `shop-${Date.now()}`,
+      name: newShopItem.name.trim(),
+      category: newShopItem.category,
+      priceCopper: Math.max(0, Number(newShopItem.priceCopper) || 0),
+      slot: newShopItem.slot ? newShopItem.slot.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      twoHanded: newShopItem.twoHanded,
+      description: newShopItem.description.trim() || undefined,
+      isCustom: true,
+      createdBy: createdBy || undefined,
+      groupId: groupId || undefined,
+    }
+    const ok = await saveInventoryItem(item, groupId)
+    if (!ok) {
+      setShopError('Gegenstand konnte nicht gespeichert werden.')
+      return
+    }
+    setNewShopItem({
+      name: '',
+      category: 'equipment',
+      priceCopper: 0,
+      slot: '',
+      twoHanded: false,
+      description: '',
+    })
+    const items = await getInventoryItems(groupId)
+    setShopItems(items)
   }
 
   const handleSyncLocalCharacters = async () => {
@@ -903,6 +1075,18 @@ export default function SpielerPage() {
           >
             🖼️ Bilder ({sharedImages.length})
           </button>
+          {selectedCharacter && (
+            <button
+              onClick={() => setActiveTab('shop')}
+              className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                activeTab === 'shop'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'
+              }`}
+            >
+              🛒 Shop
+            </button>
+          )}
         </div>
 
         {/* Characters List Tab */}
@@ -1364,17 +1548,57 @@ export default function SpielerPage() {
                 <h2 className="text-2xl font-bold text-white">
                   🎯 Fertigkeiten: {selectedCharacter.name}
                 </h2>
-                <button
-                  onClick={() => setActiveTab('character')}
-                  className="text-white/70 hover:text-white"
-                >
-                  ← Zurück zur Übersicht
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowSkillOptions((prev) => !prev)}
+                    className="text-white/70 hover:text-white text-lg"
+                    title="Optionen"
+                  >
+                    ⚙️
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('character')}
+                    className="text-white/70 hover:text-white"
+                  >
+                    ← Zurück zur Übersicht
+                  </button>
+                </div>
               </div>
+
+              {showSkillOptions && (
+                <div className="mb-4 bg-white/5 rounded-lg p-4 border border-white/10 space-y-3">
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={sortSkillsByBlips}
+                      onChange={(e) => setSortSkillsByBlips(e.target.checked)}
+                      className="rounded"
+                    />
+                    Attribute nach Blibs sortieren
+                  </label>
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={showPossibleSpecializations}
+                      onChange={(e) => setShowPossibleSpecializations(e.target.checked)}
+                      className="rounded"
+                    />
+                    Mögliche Spezialisierungen anzeigen
+                  </label>
+                </div>
+              )}
 
               {/* Alle Fertigkeiten gruppiert nach Attribut */}
               <div className="space-y-6">
-                {Object.keys(selectedCharacter.attributes).map((attribute) => {
+                {Object.keys(selectedCharacter.attributes)
+                  .sort((a, b) => {
+                    if (!sortSkillsByBlips) return 0
+                    const aCost = getAttributeCost(a, selectedCharacter.attributes[a] || '1D')
+                    const bCost = getAttributeCost(b, selectedCharacter.attributes[b] || '1D')
+                    if (bCost !== aCost) return bCost - aCost
+                    return a.localeCompare(b, 'de')
+                  })
+                  .map((attribute) => {
                   const skillsForAttribute = selectedCharacter.skills.filter(
                     skill => skill.attribute === attribute
                   )
@@ -1382,11 +1606,13 @@ export default function SpielerPage() {
                   if (skillsForAttribute.length === 0) return null
 
                   const attributeValue = selectedCharacter.attributes[attribute] || '1D'
+                  const attributeCost = getAttributeCost(attribute, attributeValue)
 
                   return (
                     <div key={attribute} className="bg-white/5 rounded-lg p-4 border border-white/10">
                       <h3 className="text-xl font-bold text-white mb-3">
                         {attribute} ({formatD6Value(attributeValue)})
+                        <span className="ml-2 text-sky-300 text-sm font-semibold">({attributeCost} Blibs)</span>
                       </h3>
                       <div className="space-y-2">
                         {skillsForAttribute.map((skill) => {
@@ -1403,6 +1629,17 @@ export default function SpielerPage() {
                           const totalBlips =
                             d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
                           const finalSkillFormula = formatD6Value(totalBlips)
+
+                          const existingSpecs = (skill.specializations || []).filter((spec) =>
+                            showPossibleSpecializations ? true : spec.blibs > 0
+                          )
+                          const suggestionSpecs = rulebookSpecializations
+                            .filter((spec) => normalizeSkillKey(spec.skill_name) === normalizeSkillKey(skill.name))
+                            .filter((spec) =>
+                              !existingSpecs.some((existing) =>
+                                normalizeSkillKey(existing.name) === normalizeSkillKey(spec.specialization_name)
+                              )
+                            )
 
                           return (
                             <div key={skill.id} className="space-y-2">
@@ -1436,9 +1673,9 @@ export default function SpielerPage() {
                               </button>
 
                               {/* Spezialisierungen */}
-                              {skill.specializations && skill.specializations.length > 0 && (
+                              {(existingSpecs.length > 0 || (showPossibleSpecializations && suggestionSpecs.length > 0)) && (
                                 <div className="ml-6 space-y-2">
-                                  {skill.specializations.map((spec) => {
+                                  {existingSpecs.map((spec) => {
                                     const specBlibs = spec.blibs
                                     const baseSpecFormula = calculateSkillValue(
                                       attributeValue,
@@ -1483,6 +1720,23 @@ export default function SpielerPage() {
                                       </button>
                                     )
                                   })}
+                                  {showPossibleSpecializations && suggestionSpecs.map((spec) => (
+                                    <div
+                                      key={`suggested-${spec.specialization_name}`}
+                                      className="w-full text-left bg-white/5 rounded-lg p-3 border border-white/10 opacity-80"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <div className="font-semibold text-white">
+                                            {spec.specialization_name}
+                                          </div>
+                                          <div className="text-white/60 text-sm mt-1">
+                                            Vorschlag aus Rule-Book
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -1826,6 +2080,114 @@ export default function SpielerPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Shop Tab */}
+        {activeTab === 'shop' && selectedCharacter && (
+          <div className="space-y-6">
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white">
+                  🛒 Shop: {selectedCharacter.name}
+                </h2>
+                <button
+                  onClick={() => setActiveTab('character')}
+                  className="text-white/70 hover:text-white"
+                >
+                  ← Zurück zum Charakter
+                </button>
+              </div>
+              <div className="text-white/70 mb-4">
+                Gold: {formatCurrency(selectedCharacter.copperCoins)}
+              </div>
+              {shopError && (
+                <div className="mb-4 text-red-300 text-sm">{shopError}</div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {shopItems.map((item) => (
+                  <div key={item.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-white font-semibold">{item.name}</div>
+                        <div className="text-white/70 text-sm">
+                          {formatCurrency(item.priceCopper)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleBuyItem(item)}
+                        className="px-3 py-1.5 rounded bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold"
+                      >
+                        Kaufen
+                      </button>
+                    </div>
+                    {item.description && (
+                      <div className="text-white/60 text-sm mt-2">{item.description}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h3 className="text-xl font-semibold text-white mb-3">Neuen Gegenstand vorschlagen</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={newShopItem.name}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, name: e.target.value })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+                <select
+                  value={newShopItem.category}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, category: e.target.value as any })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                >
+                  <option value="weapon" className="bg-slate-800">Waffe</option>
+                  <option value="armor" className="bg-slate-800">Rüstung</option>
+                  <option value="equipment" className="bg-slate-800">Ausrüstung</option>
+                </select>
+                <input
+                  type="number"
+                  placeholder="Preis (Kupfer)"
+                  value={newShopItem.priceCopper}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, priceCopper: Number(e.target.value) })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Slot (z.B. head, torso, main_hand)"
+                  value={newShopItem.slot}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, slot: e.target.value })}
+                  className="px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+                <label className="flex items-center gap-2 text-white/80 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newShopItem.twoHanded}
+                    onChange={(e) => setNewShopItem({ ...newShopItem, twoHanded: e.target.checked })}
+                    className="rounded"
+                  />
+                  Zweihändig
+                </label>
+                <div />
+                <textarea
+                  placeholder="Beschreibung"
+                  value={newShopItem.description}
+                  onChange={(e) => setNewShopItem({ ...newShopItem, description: e.target.value })}
+                  rows={2}
+                  className="md:col-span-2 px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+              </div>
+              <button
+                onClick={handleAddShopItem}
+                className="mt-3 px-4 py-2 rounded bg-primary-600 hover:bg-primary-700 text-white font-semibold"
+              >
+                Vorschlag speichern
+              </button>
             </div>
           </div>
         )}

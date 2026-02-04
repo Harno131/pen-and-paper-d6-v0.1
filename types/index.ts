@@ -210,6 +210,20 @@ export interface SharedImage {
   timestamp: Date
 }
 
+export interface ShopItem {
+  id: string
+  name: string
+  category: 'weapon' | 'armor' | 'equipment'
+  priceCopper: number
+  slot?: string | string[]
+  twoHanded?: boolean
+  description?: string
+  stats?: Record<string, number>
+  groupId?: string | null
+  createdBy?: string | null
+  isCustom?: boolean
+}
+
 export interface User {
   id: string
   name: string

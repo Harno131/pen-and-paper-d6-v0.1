@@ -28,6 +28,11 @@ export default function Home() {
   const [debugError, setDebugError] = useState('')
   const [debugSyncMessage, setDebugSyncMessage] = useState('')
   const [supabaseUrl, setSupabaseUrl] = useState('')
+  const [rulebookNotice, setRulebookNotice] = useState('')
+  const [showRulebookAuth, setShowRulebookAuth] = useState(false)
+  const [rulebookName, setRulebookName] = useState('')
+  const [rulebookPassword, setRulebookPassword] = useState('')
+  const [rulebookError, setRulebookError] = useState('')
   const router = useRouter()
 
   const checkExistingGroup = useCallback(async () => {
@@ -73,6 +78,9 @@ export default function Home() {
     const supabase = createSupabaseClient()
     setHasSupabase(supabase !== null)
     setSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || '')
+    if (typeof window !== 'undefined') {
+      setRulebookNotice(localStorage.getItem('rbmReviewCount') || '')
+    }
 
     // Wenn Supabase verfügbar ist, prüfe ob bereits eine Gruppe ausgewählt ist
     if (supabase) {
@@ -337,6 +345,64 @@ export default function Home() {
           >
             Spieler
           </button>
+
+          <button
+            onClick={() => {
+              setRulebookError('')
+              setShowRulebookAuth((prev) => !prev)
+            }}
+            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-lg transition-all duration-300"
+          >
+            Rule-Book-Master
+            {rulebookNotice && Number(rulebookNotice) > 0 && (
+              <span className="ml-2 text-sky-300 text-sm font-semibold">
+                ({rulebookNotice})
+              </span>
+            )}
+          </button>
+          {showRulebookAuth && (
+            <div className="rounded-lg border border-white/20 bg-white/5 p-4 text-sm text-white/80 space-y-3">
+              <input
+                type="text"
+                placeholder="Name"
+                value={rulebookName}
+                onChange={(e) => setRulebookName(e.target.value)}
+                className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+              />
+              {rulebookName.trim() === 'Flori' && (
+                <input
+                  type="password"
+                  placeholder="Master-Passwort"
+                  value={rulebookPassword}
+                  onChange={(e) => setRulebookPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white"
+                />
+              )}
+              {rulebookError && (
+                <div className="text-red-300">{rulebookError}</div>
+              )}
+              <button
+                onClick={() => {
+                  if (rulebookName.trim() !== 'Flori') {
+                    setRulebookError('Nur der Rule-Book-Master darf öffnen.')
+                    return
+                  }
+                  if (!rulebookPassword.trim()) {
+                    setRulebookError('Bitte Master-Passwort eingeben.')
+                    return
+                  }
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('rbmName', rulebookName.trim())
+                    localStorage.setItem('rbmPassword', rulebookPassword)
+                  }
+                  router.push('/rulebook-master')
+                }}
+                className="w-full px-3 py-2 rounded bg-primary-600 hover:bg-primary-700 text-white font-semibold"
+              >
+                Öffnen
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

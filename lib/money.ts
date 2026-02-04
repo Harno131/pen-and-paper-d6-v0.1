@@ -5,3 +5,5 @@ export const formatCopper = (copper: number | undefined | null): string => {
   const rest = total % 10
   return `${gold}g ${silver}s ${rest}k`
 }
+
+export const formatCurrency = formatCopper

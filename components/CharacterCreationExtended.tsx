@@ -10,6 +10,7 @@ import {
 } from '@/lib/data'
 import { parseD6Value } from '@/lib/dice'
 import { calculateSkillValue, blibsToModifier } from '@/lib/skills'
+import { enqueueRulebookReview } from '@/lib/rulebook'
 import AlignmentSelector from './AlignmentSelector'
 
 interface CharacterCreationExtendedProps {
@@ -284,6 +285,43 @@ export default function CharacterCreationExtended({
 
   const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
 
+  const pushRulebookReview = async (skillName: string, attribute: string, description: string) => {
+    if (typeof window === 'undefined') return
+    const groupId = localStorage.getItem('groupId')
+    if (!groupId) return
+    try {
+      await enqueueRulebookReview({
+        skillName,
+        attribute,
+        description: description.trim() || 'Neue Fertigkeit ohne Beschreibung.',
+        sourceGroupId: groupId,
+        sourcePlayerName: playerName,
+        entryType: 'skill',
+      })
+    } catch (error) {
+      console.warn('Rule-Book-Review konnte nicht gespeichert werden.', error)
+    }
+  }
+
+  const pushRulebookSpecialization = async (skillName: string, attribute: string, specName: string) => {
+    if (typeof window === 'undefined') return
+    const groupId = localStorage.getItem('groupId')
+    if (!groupId) return
+    try {
+      await enqueueRulebookReview({
+        skillName,
+        attribute,
+        description: `Spezialisierungsvorschlag: ${specName}`,
+        sourceGroupId: groupId,
+        sourcePlayerName: playerName,
+        entryType: 'specialization',
+        specName,
+      })
+    } catch (error) {
+      console.warn('Rule-Book-Review konnte nicht gespeichert werden.', error)
+    }
+  }
+
   const generatePlaceholderProfileImage = async () => {
     const topAttributes = getTopAttributes()
       .map((attr) => `${attr.name} ${attr.value}`)
@@ -466,6 +504,7 @@ export default function CharacterCreationExtended({
       [newSkill.id]: { ...newSkill },
     }))
     setCustomSkills(prev => ({ ...prev, [attribute]: '' }))
+    pushRulebookReview(newSkill.name, newSkill.attribute, 'Neue Fertigkeit (ohne Beschreibung).')
   }
 
   const handleAddSpecialization = (skillId: string, specName: string) => {
@@ -488,6 +527,7 @@ export default function CharacterCreationExtended({
         specializations: [...prev[skillId].specializations, newSpec],
       }
     }))
+    pushRulebookSpecialization(skill.name, skill.attribute, newSpec.name)
   }
 
   const handleSpecializationBlibChange = (skillId: string, specId: string, delta: number) => {
@@ -539,6 +579,7 @@ export default function CharacterCreationExtended({
       }
     }))
 
+    pushRulebookSpecialization(skill.name, skill.attribute, newSpec.name)
     setNewSpecialization({ name: '', skillId: '' })
   }
 
