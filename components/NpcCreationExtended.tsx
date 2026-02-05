@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Character } from '@/types'
 import { getAlignment } from '@/lib/alignments'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
+import { buildNpcPromptOptions, buildPromptText, PROMPT_BACKGROUNDS, type PromptOption } from '@/lib/prompt-builder'
 import NameGenerator from './NameGenerator'
 import AlignmentSelector from './AlignmentSelector'
 
@@ -83,6 +84,10 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
   const [portraitSaved, setPortraitSaved] = useState(!!editingNpc?.profileImageUrl)
   const [portraitLoading, setPortraitLoading] = useState(false)
   const [portraitError, setPortraitError] = useState('')
+  const [portraitPromptOptions, setPortraitPromptOptions] = useState<PromptOption[]>([])
+  const [selectedPortraitPromptIds, setSelectedPortraitPromptIds] = useState<string[]>([])
+  const [portraitPromptBackground, setPortraitPromptBackground] = useState(PROMPT_BACKGROUNDS[0])
+  const [showPortraitPromptBuilder, setShowPortraitPromptBuilder] = useState(false)
   const [tagInput, setTagInput] = useState(
     editingNpc?.tags && editingNpc.tags.length > 0 ? editingNpc.tags.map(tag => `#${tag}`).join(' ') : ''
   )
@@ -150,6 +155,16 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       profession,
       ...bestSkills,
     ].filter(Boolean)
+    const selectedPromptLabels = portraitPromptOptions
+      .filter(option => selectedPortraitPromptIds.includes(option.id))
+      .map(option => option.label)
+    const promptOverride = portraitPromptOptions.length > 0
+      ? buildPromptText({
+          type: 'portrait',
+          items: selectedPromptLabels,
+          background: portraitPromptBackground,
+        })
+      : undefined
 
     setPortraitLoading(true)
     setPortraitError('')
@@ -167,6 +182,9 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
             age: undefined,
             traits,
           },
+          promptOverride,
+          promptItems: selectedPromptLabels,
+          background: portraitPromptBackground,
         }),
       })
       const json = await response.json()
@@ -184,6 +202,28 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
     } finally {
       setPortraitLoading(false)
     }
+  }
+
+  const buildPortraitPromptPreview = () => {
+    const options = buildNpcPromptOptions({
+      name,
+      race,
+      className,
+      gender,
+      profession,
+      bestSkills,
+      affiliation,
+      location,
+    })
+    setPortraitPromptOptions(options)
+    setSelectedPortraitPromptIds(options.map(option => option.id))
+    setShowPortraitPromptBuilder(true)
+  }
+
+  const togglePortraitPromptOption = (id: string) => {
+    setSelectedPortraitPromptIds((prev) => (
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    ))
   }
 
   const handleSave = () => {
@@ -472,13 +512,75 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
           {/* Portrait */}
           <div className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-4">
             <div className="flex flex-col gap-3">
-              <button
-                onClick={handleGeneratePortrait}
-                disabled={portraitLoading}
-                className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
-              >
-                {portraitLoading ? 'Generiere...' : 'Porträt generieren'}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={buildPortraitPromptPreview}
+                  className="px-4 py-2 rounded-lg font-semibold bg-white/10 hover:bg-white/20 text-white transition-all duration-300"
+                >
+                  Prompt-Vorschau generieren
+                </button>
+                <button
+                  onClick={handleGeneratePortrait}
+                  disabled={portraitLoading || (showPortraitPromptBuilder && selectedPortraitPromptIds.length === 0)}
+                  className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                >
+                  {portraitLoading ? 'Generiere...' : 'Finales Porträt generieren'}
+                </button>
+              </div>
+              {showPortraitPromptBuilder && (
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-white font-semibold">Parameter-Checkliste</div>
+                    <button
+                      onClick={() => setShowPortraitPromptBuilder(false)}
+                      className="text-white/60 hover:text-white text-sm"
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {portraitPromptOptions.map(option => (
+                      <label key={option.id} className="flex items-start gap-2 text-white/80 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedPortraitPromptIds.includes(option.id)}
+                          onChange={() => togglePortraitPromptOption(option.id)}
+                          className="mt-1"
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                    {portraitPromptOptions.length === 0 && (
+                      <div className="text-white/60 text-sm">Noch keine Vorschläge verfügbar.</div>
+                    )}
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <label className="text-white/80 text-sm">
+                      Hintergrund
+                      <select
+                        value={portraitPromptBackground}
+                        onChange={(e) => setPortraitPromptBackground(e.target.value)}
+                        className="ml-2 px-2 py-1 rounded bg-white/10 border border-white/20 text-white text-sm"
+                      >
+                        {PROMPT_BACKGROUNDS.map(option => (
+                          <option key={option} value={option} className="bg-slate-800">
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="text-white/50 text-xs">
+                    Vorschau: {buildPromptText({
+                      type: 'portrait',
+                      items: portraitPromptOptions
+                        .filter(option => selectedPortraitPromptIds.includes(option.id))
+                        .map(option => option.label),
+                      background: portraitPromptBackground,
+                    })}
+                  </div>
+                </div>
+              )}
               {portraitError && (
                 <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="font-semibold mb-1">Bild nicht generiert</div>

@@ -9,6 +9,9 @@ type GenerateImageRequest = {
   type: 'portrait' | 'event' | 'monster'
   data: Record<string, any>
   fallcrestFilter?: boolean
+  promptOverride?: string
+  promptItems?: string[]
+  background?: string
 }
 
 // Hilfsfunktion für die Stimmung
@@ -108,7 +111,12 @@ export async function POST(request: Request) {
 		{ model: "gemini-2.5-flash" }, 
 	);
     
-    const rawPrompt = buildPrompt(body)
+    const rawPrompt =
+      typeof body.promptOverride === 'string' && body.promptOverride.trim()
+        ? body.promptOverride.trim()
+        : Array.isArray(body.promptItems) && body.promptItems.length > 0
+          ? `${body.promptItems.join(', ')}${body.background ? `. Hintergrund: ${body.background}` : ''}`
+          : buildPrompt(body)
     const geminiInstruction = `Act as an expert AI image prompter. Expand this description into a professional, highly detailed English image prompt for a high-quality AI generator: "${rawPrompt}". Output ONLY the final prompt text.`
     
     const result = await model.generateContent(geminiInstruction)

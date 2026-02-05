@@ -11,6 +11,7 @@ import {
 import { parseD6Value } from '@/lib/dice'
 import { calculateSkillValue, blibsToModifier } from '@/lib/skills'
 import { enqueueRulebookReview } from '@/lib/rulebook'
+import { buildCharacterPromptOptions, buildPromptText, PROMPT_BACKGROUNDS, type PromptOption } from '@/lib/prompt-builder'
 import AlignmentSelector from './AlignmentSelector'
 
 interface CharacterCreationExtendedProps {
@@ -76,6 +77,10 @@ export default function CharacterCreationExtended({
   const [visibleEquipment, setVisibleEquipment] = useState('')
   const [profileImageLoading, setProfileImageLoading] = useState(false)
   const [profileImageError, setProfileImageError] = useState('')
+  const [profilePromptOptions, setProfilePromptOptions] = useState<PromptOption[]>([])
+  const [selectedProfilePromptIds, setSelectedProfilePromptIds] = useState<string[]>([])
+  const [profilePromptBackground, setProfilePromptBackground] = useState(PROMPT_BACKGROUNDS[0])
+  const [showProfilePromptBuilder, setShowProfilePromptBuilder] = useState(false)
   const initKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -329,6 +334,16 @@ export default function CharacterCreationExtended({
     const equipmentText = visibleEquipment.trim()
     const resolvedRace = race === 'Andere' ? otherRace.trim() : race
     const resolvedClass = className === 'Andere' ? otherClass.trim() : className
+    const selectedPromptLabels = profilePromptOptions
+      .filter(option => selectedProfilePromptIds.includes(option.id))
+      .map(option => option.label)
+    const promptOverride = profilePromptOptions.length > 0
+      ? buildPromptText({
+          type: 'portrait',
+          items: selectedPromptLabels,
+          background: profilePromptBackground,
+        })
+      : undefined
 
     setProfileImageLoading(true)
     setProfileImageError('')
@@ -348,6 +363,9 @@ export default function CharacterCreationExtended({
             equipment: equipmentText,
             topAttributes,
           },
+          promptOverride,
+          promptItems: selectedPromptLabels,
+          background: profilePromptBackground,
         }),
       })
       let rawText = ''
@@ -381,6 +399,43 @@ export default function CharacterCreationExtended({
     } finally {
       setProfileImageLoading(false)
     }
+  }
+
+  const buildProfilePromptPreview = () => {
+    const resolvedRace = race === 'Andere' ? otherRace.trim() : race
+    const resolvedClass = className === 'Andere' ? otherClass.trim() : className
+    const promptSkills = Object.values(characterSkills).map((skill) => ({
+      ...skill,
+      bonusDice: skillBonuses[skill.id] || 0,
+      bonusSteps: skillStepBonuses[skill.id] || 0,
+    }))
+    const specializationTraits = promptSkills.flatMap((skill) =>
+      (skill.specializations || [])
+        .filter(spec => spec.blibs > 0)
+        .map(spec => `Spezialisierung: ${spec.name}`)
+    )
+    const options = buildCharacterPromptOptions({
+      gender,
+      race: resolvedRace,
+      className: resolvedClass,
+      age,
+      attributes: STANDARD_ATTRIBUTES.reduce((acc, attr) => ({
+        ...acc,
+        [attr]: getAttributeValue(attr),
+      }), {} as Record<string, string>),
+      skills: promptSkills,
+      traits: [...traitList, ...specializationTraits],
+      visibleEquipment: visibleEquipment.trim(),
+    })
+    setProfilePromptOptions(options)
+    setSelectedProfilePromptIds(options.map(option => option.id))
+    setShowProfilePromptBuilder(true)
+  }
+
+  const toggleProfilePromptOption = (id: string) => {
+    setSelectedProfilePromptIds((prev) => (
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    ))
   }
 
   const handleAttributeBonusChange = (attrName: string, delta: number) => {
@@ -1201,13 +1256,80 @@ export default function CharacterCreationExtended({
                   />
                 </div>
                 <div className="flex flex-col gap-4">
-                  <button
-                    onClick={generatePlaceholderProfileImage}
-                    disabled={!canGenerateProfileImage || profileImageLoading}
-                    className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
-                  >
-                    {profileImageLoading ? 'Generiere...' : 'Profilbild generieren'}
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={buildProfilePromptPreview}
+                      disabled={!canGenerateProfileImage}
+                      className="px-4 py-2 rounded-lg font-semibold bg-white/10 hover:bg-white/20 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300"
+                    >
+                      Prompt-Vorschau generieren
+                    </button>
+                    <button
+                      onClick={generatePlaceholderProfileImage}
+                      disabled={
+                        !canGenerateProfileImage
+                        || profileImageLoading
+                        || (showProfilePromptBuilder && selectedProfilePromptIds.length === 0)
+                      }
+                      className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                    >
+                      {profileImageLoading ? 'Generiere...' : 'Finales Bild generieren'}
+                    </button>
+                  </div>
+                  {showProfilePromptBuilder && (
+                    <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-white font-semibold">Parameter-Checkliste</div>
+                        <button
+                          onClick={() => setShowProfilePromptBuilder(false)}
+                          className="text-white/60 hover:text-white text-sm"
+                        >
+                          Schließen
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {profilePromptOptions.map(option => (
+                          <label key={option.id} className="flex items-start gap-2 text-white/80 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selectedProfilePromptIds.includes(option.id)}
+                              onChange={() => toggleProfilePromptOption(option.id)}
+                              className="mt-1"
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        ))}
+                        {profilePromptOptions.length === 0 && (
+                          <div className="text-white/60 text-sm">Noch keine Vorschläge verfügbar.</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <label className="text-white/80 text-sm">
+                          Hintergrund
+                          <select
+                            value={profilePromptBackground}
+                            onChange={(e) => setProfilePromptBackground(e.target.value)}
+                            className="ml-2 px-2 py-1 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          >
+                            {PROMPT_BACKGROUNDS.map(option => (
+                              <option key={option} value={option} className="bg-slate-800">
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="text-white/50 text-xs">
+                        Vorschau: {buildPromptText({
+                          type: 'portrait',
+                          items: profilePromptOptions
+                            .filter(option => selectedProfilePromptIds.includes(option.id))
+                            .map(option => option.label),
+                          background: profilePromptBackground,
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {profileImageError && (
                     <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
                       <div className="font-semibold mb-1">Bild nicht generiert</div>

@@ -41,6 +41,7 @@ import { createSupabaseClient } from '@/lib/supabase'
 import { getCharacterSkillPenaltyBlips } from '@/lib/injuries'
 import { enqueueRulebookReview, getRulebookSkills, getRulebookSpecializations } from '@/lib/rulebook'
 import { getDefaultShopItems } from '@/lib/shop'
+import { buildJournalPromptOptions, buildMonsterPromptOptions, buildPromptText, PROMPT_BACKGROUNDS, type PromptOption } from '@/lib/prompt-builder'
 
 const BESTIARY_ATTRIBUTES = ['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'] as const
 const DEFAULT_MONSTER_ATTRIBUTES = {
@@ -75,6 +76,10 @@ export default function SpielleiterPage() {
   const [journalIllustrationSaved, setJournalIllustrationSaved] = useState(false)
   const [journalIllustrationLoading, setJournalIllustrationLoading] = useState(false)
   const [journalIllustrationError, setJournalIllustrationError] = useState('')
+  const [journalPromptOptions, setJournalPromptOptions] = useState<PromptOption[]>([])
+  const [selectedJournalPromptIds, setSelectedJournalPromptIds] = useState<string[]>([])
+  const [journalPromptBackground, setJournalPromptBackground] = useState(PROMPT_BACKGROUNDS[0])
+  const [showJournalPromptBuilder, setShowJournalPromptBuilder] = useState(false)
   const [isSavingJournal, setIsSavingJournal] = useState(false)
   const [showSyncIndicator, setShowSyncIndicator] = useState(false)
   const [storageError, setStorageError] = useState('')
@@ -92,6 +97,8 @@ export default function SpielleiterPage() {
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
+  const [skillRecoveryJson, setSkillRecoveryJson] = useState('')
+  const [skillRecoveryStatus, setSkillRecoveryStatus] = useState('')
   const [bestiary, setBestiary] = useState<Bestiary[]>([])
   const [editingMonster, setEditingMonster] = useState<Bestiary | null>(null)
   const [monsterForm, setMonsterForm] = useState({
@@ -109,6 +116,10 @@ export default function SpielleiterPage() {
   const [monsterImageSaved, setMonsterImageSaved] = useState(false)
   const [monsterImageLoading, setMonsterImageLoading] = useState(false)
   const [monsterImageError, setMonsterImageError] = useState('')
+  const [monsterPromptOptions, setMonsterPromptOptions] = useState<PromptOption[]>([])
+  const [selectedMonsterPromptIds, setSelectedMonsterPromptIds] = useState<string[]>([])
+  const [monsterPromptBackground, setMonsterPromptBackground] = useState(PROMPT_BACKGROUNDS[0])
+  const [showMonsterPromptBuilder, setShowMonsterPromptBuilder] = useState(false)
   const [bestiaryTagFilter, setBestiaryTagFilter] = useState('')
   const [expandedMonsterId, setExpandedMonsterId] = useState<string | null>(null)
   const [settings, setSettings] = useState<CharacterCreationSettings>(getCharacterCreationSettings())
@@ -173,6 +184,55 @@ export default function SpielleiterPage() {
   }
 
   const getSkillDisplayName = (name: string) => parseSkillName(name).displayName
+
+  const handleSkillRecovery = async () => {
+    setSkillRecoveryStatus('')
+    try {
+      if (!skillRecoveryJson.trim()) {
+        setSkillRecoveryStatus('Bitte JSON einfügen.')
+        return
+      }
+      const parsed = JSON.parse(skillRecoveryJson)
+      let skillsPayload: any = parsed
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        if (typeof parsed.availableSkills === 'string') {
+          skillsPayload = JSON.parse(parsed.availableSkills)
+        } else if (Array.isArray(parsed.availableSkills)) {
+          skillsPayload = parsed.availableSkills
+        }
+      }
+      if (!Array.isArray(skillsPayload)) {
+        setSkillRecoveryStatus('Kein gültiges Fertigkeiten-Array gefunden.')
+        return
+      }
+      const recoveredSkills: Skill[] = skillsPayload.map((skill: any, index: number) => ({
+        id: skill.id || `skill-recovered-${Date.now()}-${index}`,
+        name: String(skill.name || '').trim(),
+        attribute: String(skill.attribute || 'Reflexe'),
+        bonusDice: Number(skill.bonusDice || 0),
+        bonusSteps: Number(skill.bonusSteps || 0),
+        specializations: Array.isArray(skill.specializations) ? skill.specializations : [],
+        isWeakened: Boolean(skill.isWeakened),
+        isCustom: Boolean(skill.isCustom),
+        description: typeof skill.description === 'string' ? skill.description : undefined,
+      }))
+      if (recoveredSkills.length === 0) {
+        setSkillRecoveryStatus('Keine Fertigkeiten im Backup gefunden.')
+        return
+      }
+      const ok = saveAvailableSkills(recoveredSkills)
+      if (!ok) {
+        const storageError = getStorageError()
+        setSkillRecoveryStatus(storageError || 'Konnte Fertigkeiten nicht speichern.')
+        return
+      }
+      setAvailableSkills(recoveredSkills)
+      await loadData()
+      setSkillRecoveryStatus(`Wiederherstellung abgeschlossen: ${recoveredSkills.length} Fertigkeiten geladen.`)
+    } catch (error: any) {
+      setSkillRecoveryStatus(`Fehler beim Wiederherstellen: ${error?.message || 'Unbekannter Fehler'}`)
+    }
+  }
 
   const normalizeSkillKey = (value: string) =>
     value
@@ -369,6 +429,70 @@ export default function SpielleiterPage() {
     ? formatFantasyDate(lastEntryFantasyDate, true, lastEntryTimeOfDay)
     : 'Noch kein Eintrag'
   const previewEntryLabel = formatFantasyDate(previewJournalDate.fantasyDate, true, previewJournalDate.timeOfDay)
+
+  const buildJournalPromptPreview = () => {
+    const tags = extractTagsFromText(newJournalEntry.content)
+    const options = buildJournalPromptOptions({
+      title: newJournalEntry.title,
+      text: newJournalEntry.content,
+      tags,
+    })
+    setJournalPromptOptions(options)
+    setSelectedJournalPromptIds(options.map(option => option.id))
+    setShowJournalPromptBuilder(true)
+  }
+
+  const toggleJournalPromptOption = (id: string) => {
+    setSelectedJournalPromptIds((prev) => (
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    ))
+  }
+
+  const handleGenerateJournalIllustration = async () => {
+    const selectedPromptLabels = journalPromptOptions
+      .filter(option => selectedJournalPromptIds.includes(option.id))
+      .map(option => option.label)
+    const promptOverride = journalPromptOptions.length > 0
+      ? buildPromptText({
+          type: 'event',
+          items: selectedPromptLabels,
+          background: journalPromptBackground,
+        })
+      : undefined
+    setJournalIllustrationLoading(true)
+    setJournalIllustrationError('')
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'event',
+          data: {
+            text: newJournalEntry.content,
+            dateLabel: previewEntryLabel,
+          },
+          fallcrestFilter: journalFallcrestFilter,
+          promptOverride,
+          promptItems: selectedPromptLabels,
+          background: journalPromptBackground,
+        }),
+      })
+      const json = await response.json()
+      if (response.ok && json?.imageUrl) {
+        setJournalIllustrationUrl(json.imageUrl)
+        setJournalIllustrationSaved(false)
+      } else {
+        const reason = typeof json?.error === 'string'
+          ? json.error
+          : json?.details || 'Illustration konnte nicht generiert werden.'
+        setJournalIllustrationError(reason)
+      }
+    } catch (error) {
+      setJournalIllustrationError('Illustration konnte nicht generiert werden. Prüfe Internetverbindung und API-Key.')
+    } finally {
+      setJournalIllustrationLoading(false)
+    }
+  }
 
   const updateCustomJumpDate = (updates: Partial<{ year: number; month: number; day: number }>) => {
     setCustomJumpDate((prev) => {
@@ -696,6 +820,16 @@ export default function SpielleiterPage() {
   }
 
   const handleGenerateMonsterImage = async () => {
+    const selectedPromptLabels = monsterPromptOptions
+      .filter(option => selectedMonsterPromptIds.includes(option.id))
+      .map(option => option.label)
+    const promptOverride = monsterPromptOptions.length > 0
+      ? buildPromptText({
+          type: 'monster',
+          items: selectedPromptLabels,
+          background: monsterPromptBackground,
+        })
+      : undefined
     setMonsterImageLoading(true)
     setMonsterImageError('')
     try {
@@ -709,6 +843,9 @@ export default function SpielleiterPage() {
             monsterType: monsterForm.type,
             abilities: monsterForm.abilities.split(/[,\n;]/).map(a => a.trim()).filter(Boolean),
           },
+          promptOverride,
+          promptItems: selectedPromptLabels,
+          background: monsterPromptBackground,
         }),
       })
       const json = await response.json()
@@ -726,6 +863,28 @@ export default function SpielleiterPage() {
     } finally {
       setMonsterImageLoading(false)
     }
+  }
+
+  const buildMonsterPromptPreview = () => {
+    const abilities = monsterForm.abilities.split(/[,\n;]/).map(a => a.trim()).filter(Boolean)
+    const tags = extractTagsFromText(monsterForm.tags)
+    const options = buildMonsterPromptOptions({
+      name: monsterForm.name,
+      type: monsterForm.type,
+      race: monsterForm.race,
+      description: monsterForm.description,
+      abilities,
+      tags,
+    })
+    setMonsterPromptOptions(options)
+    setSelectedMonsterPromptIds(options.map(option => option.id))
+    setShowMonsterPromptBuilder(true)
+  }
+
+  const toggleMonsterPromptOption = (id: string) => {
+    setSelectedMonsterPromptIds((prev) => (
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    ))
   }
 
   const handleSaveMonster = async () => {
@@ -2777,44 +2936,80 @@ export default function SpielleiterPage() {
                       />
                       Fallcrest-Artefakt-Nässe aktivieren
                     </label>
-                    <button
-                      onClick={async () => {
-                        setJournalIllustrationLoading(true)
-                        setJournalIllustrationError('')
-                        try {
-                          const response = await fetch('/api/generate-image', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              type: 'event',
-                              data: {
-                                text: newJournalEntry.content,
-                                dateLabel: previewEntryLabel,
-                              },
-                              fallcrestFilter: journalFallcrestFilter,
-                            }),
-                          })
-                          const json = await response.json()
-                          if (response.ok && json?.imageUrl) {
-                            setJournalIllustrationUrl(json.imageUrl)
-                            setJournalIllustrationSaved(false)
-                          } else {
-                            const reason = typeof json?.error === 'string'
-                              ? json.error
-                              : json?.details || 'Illustration konnte nicht generiert werden.'
-                            setJournalIllustrationError(reason)
-                          }
-                        } catch (error) {
-                          setJournalIllustrationError('Illustration konnte nicht generiert werden. Prüfe Internetverbindung und API-Key.')
-                        } finally {
-                          setJournalIllustrationLoading(false)
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={buildJournalPromptPreview}
+                        disabled={!canGenerateJournalIllustration}
+                        className="flex-1 px-4 py-2 rounded-lg font-semibold bg-white/10 hover:bg-white/20 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300"
+                      >
+                        Prompt-Vorschau generieren
+                      </button>
+                      <button
+                        onClick={handleGenerateJournalIllustration}
+                        disabled={
+                          !canGenerateJournalIllustration
+                          || journalIllustrationLoading
+                          || (showJournalPromptBuilder && selectedJournalPromptIds.length === 0)
                         }
-                      }}
-                      disabled={!canGenerateJournalIllustration || journalIllustrationLoading}
-                      className="w-full px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
-                    >
-                      {journalIllustrationLoading ? 'Generiere...' : 'Illustration generieren'}
-                    </button>
+                        className="flex-1 px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                      >
+                        {journalIllustrationLoading ? 'Generiere...' : 'Finale Illustration generieren'}
+                      </button>
+                    </div>
+                    {showJournalPromptBuilder && (
+                      <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-white font-semibold">Parameter-Checkliste</div>
+                          <button
+                            onClick={() => setShowJournalPromptBuilder(false)}
+                            className="text-white/60 hover:text-white text-sm"
+                          >
+                            Schließen
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {journalPromptOptions.map(option => (
+                            <label key={option.id} className="flex items-start gap-2 text-white/80 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={selectedJournalPromptIds.includes(option.id)}
+                                onChange={() => toggleJournalPromptOption(option.id)}
+                                className="mt-1"
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          ))}
+                          {journalPromptOptions.length === 0 && (
+                            <div className="text-white/60 text-sm">Noch keine Vorschläge verfügbar.</div>
+                          )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <label className="text-white/80 text-sm">
+                            Hintergrund
+                            <select
+                              value={journalPromptBackground}
+                              onChange={(e) => setJournalPromptBackground(e.target.value)}
+                              className="ml-2 px-2 py-1 rounded bg-white/10 border border-white/20 text-white text-sm"
+                            >
+                              {PROMPT_BACKGROUNDS.map(option => (
+                                <option key={option} value={option} className="bg-slate-800">
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="text-white/50 text-xs">
+                          Vorschau: {buildPromptText({
+                            type: 'event',
+                            items: journalPromptOptions
+                              .filter(option => selectedJournalPromptIds.includes(option.id))
+                              .map(option => option.label),
+                            background: journalPromptBackground,
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {journalIllustrationError && (
                       <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
                         <div className="font-semibold mb-1">Illustration nicht generiert</div>
@@ -3355,6 +3550,32 @@ export default function SpielleiterPage() {
                 </div>
               </div>
 
+              <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10">
+                <h3 className="text-lg font-semibold text-white mb-2">Wiederherstellung aus Backup</h3>
+                <p className="text-white/70 text-sm mb-3">
+                  Füge hier den JSON‑Dump (z.B. aus der Firefox‑Konsole) ein, um Fertigkeiten und Beschreibungen
+                  wiederherzustellen.
+                </p>
+                <textarea
+                  value={skillRecoveryJson}
+                  onChange={(e) => setSkillRecoveryJson(e.target.value)}
+                  rows={6}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  placeholder='{"availableSkills":"[...]"} oder direkt ein Array'
+                />
+                <div className="flex items-center gap-3 mt-3">
+                  <button
+                    onClick={handleSkillRecovery}
+                    className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
+                  >
+                    Fertigkeiten wiederherstellen
+                  </button>
+                  {skillRecoveryStatus && (
+                    <span className="text-white/80 text-sm">{skillRecoveryStatus}</span>
+                  )}
+                </div>
+              </div>
+
               {/* Fertigkeiten-Liste */}
               <div className="space-y-4">
                 {['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'].map(attr => {
@@ -3547,13 +3768,80 @@ export default function SpielleiterPage() {
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  <button
-                    onClick={handleGenerateMonsterImage}
-                    disabled={monsterImageLoading || !monsterForm.name.trim()}
-                    className="px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
-                  >
-                    {monsterImageLoading ? 'Generiere...' : 'Monster-Bild generieren'}
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={buildMonsterPromptPreview}
+                      disabled={!monsterForm.name.trim()}
+                      className="flex-1 px-4 py-2 rounded-lg font-semibold bg-white/10 hover:bg-white/20 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300"
+                    >
+                      Prompt-Vorschau generieren
+                    </button>
+                    <button
+                      onClick={handleGenerateMonsterImage}
+                      disabled={
+                        monsterImageLoading
+                        || !monsterForm.name.trim()
+                        || (showMonsterPromptBuilder && selectedMonsterPromptIds.length === 0)
+                      }
+                      className="flex-1 px-4 py-2 rounded-lg font-semibold bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/40"
+                    >
+                      {monsterImageLoading ? 'Generiere...' : 'Finales Monster-Bild generieren'}
+                    </button>
+                  </div>
+                  {showMonsterPromptBuilder && (
+                    <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-white font-semibold">Parameter-Checkliste</div>
+                        <button
+                          onClick={() => setShowMonsterPromptBuilder(false)}
+                          className="text-white/60 hover:text-white text-sm"
+                        >
+                          Schließen
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {monsterPromptOptions.map(option => (
+                          <label key={option.id} className="flex items-start gap-2 text-white/80 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selectedMonsterPromptIds.includes(option.id)}
+                              onChange={() => toggleMonsterPromptOption(option.id)}
+                              className="mt-1"
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        ))}
+                        {monsterPromptOptions.length === 0 && (
+                          <div className="text-white/60 text-sm">Noch keine Vorschläge verfügbar.</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <label className="text-white/80 text-sm">
+                          Hintergrund
+                          <select
+                            value={monsterPromptBackground}
+                            onChange={(e) => setMonsterPromptBackground(e.target.value)}
+                            className="ml-2 px-2 py-1 rounded bg-white/10 border border-white/20 text-white text-sm"
+                          >
+                            {PROMPT_BACKGROUNDS.map(option => (
+                              <option key={option} value={option} className="bg-slate-800">
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="text-white/50 text-xs">
+                        Vorschau: {buildPromptText({
+                          type: 'monster',
+                          items: monsterPromptOptions
+                            .filter(option => selectedMonsterPromptIds.includes(option.id))
+                            .map(option => option.label),
+                          background: monsterPromptBackground,
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {monsterImageError && (
                     <div className="text-red-400 text-sm bg-white/5 rounded-lg p-3 border border-white/10">
                       <div className="font-semibold mb-1">Bild nicht generiert</div>
