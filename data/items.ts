@@ -6,6 +6,7 @@ export type ShopItem = {
   slot?: string | string[]
   twoHanded?: boolean
   description?: string
+  stats?: Record<string, number>
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
