@@ -20,7 +20,7 @@ import {
   getStorageError,
   clearStorageError,
 } from '@/lib/data'
-import { getGroupSettings, getInjuryTemplates, getCharacterInjuries } from '@/lib/supabase-data'
+import { getGroupSettings, getInjuryTemplates, getCharacterInjuries, getAvailableSkillsFromSupabase } from '@/lib/supabase-data'
 import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
 import { createSupabaseClient } from '@/lib/supabase'
 import { calculateSkillValue, DEFAULT_COMBAT_SKILL_NAMES } from '@/lib/skills'
@@ -57,6 +57,26 @@ const buildSkillDescriptionMap = (skills: Skill[]) => {
     map[normalizeSkillKey(skill.name)] = desc
   })
   return map
+}
+
+const getPresetStorageKey = (name: string, preset: 1 | 2) =>
+  `skillPreset:${normalizeSkillKey(name || 'spieler')}:${preset}`
+
+const loadPresetFromStorage = (name: string, preset: 1 | 2): string[] => {
+  if (typeof window === 'undefined') return []
+  const raw = localStorage.getItem(getPresetStorageKey(name, preset))
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+const savePresetToStorage = (name: string, preset: 1 | 2, keys: string[]) => {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(getPresetStorageKey(name, preset), JSON.stringify(keys))
 }
 
 export default function SpielerPage() {
@@ -226,6 +246,7 @@ export default function SpielerPage() {
   const [onlyCombatSkills, setOnlyCombatSkills] = useState(false)
   const [showPossibleSpecializations, setShowPossibleSpecializations] = useState(false)
   const [rulebookSpecializations, setRulebookSpecializations] = useState<any[]>([])
+  const [rulebookCacheInfo, setRulebookCacheInfo] = useState<{ updatedAt?: string }>({})
   const [shopItems, setShopItems] = useState<ShopItem[]>([])
   const [shopError, setShopError] = useState('')
   const [newShopItem, setNewShopItem] = useState({
@@ -262,22 +283,27 @@ export default function SpielerPage() {
   const normalizedCombatSkillNames = useMemo(() => {
     return new Set(combatSkillNames.map((name) => normalizeSkillKey(name)))
   }, [combatSkillNames])
-  const getPresetStorageKey = (name: string, preset: 1 | 2) =>
-    `skillPreset:${normalizeSkillKey(name || 'spieler')}:${preset}`
-  const loadPresetFromStorage = (name: string, preset: 1 | 2): string[] => {
-    if (typeof window === 'undefined') return []
-    const raw = localStorage.getItem(getPresetStorageKey(name, preset))
-    if (!raw) return []
+  const RULEBOOK_SKILLS_KEY = 'rulebookSkillsCache'
+  const RULEBOOK_SPECS_KEY = 'rulebookSpecsCache'
+  const RULEBOOK_META_KEY = 'rulebookCacheMeta'
+  const loadRulebookCache = () => {
+    if (typeof window === 'undefined') return { skills: null, specs: null, meta: null }
     try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : []
+      const skills = JSON.parse(localStorage.getItem(RULEBOOK_SKILLS_KEY) || 'null')
+      const specs = JSON.parse(localStorage.getItem(RULEBOOK_SPECS_KEY) || 'null')
+      const meta = JSON.parse(localStorage.getItem(RULEBOOK_META_KEY) || 'null')
+      return { skills, specs, meta }
     } catch {
-      return []
+      return { skills: null, specs: null, meta: null }
     }
   }
-  const savePresetToStorage = (name: string, preset: 1 | 2, keys: string[]) => {
+  const persistRulebookCache = (skills: any[], specs: any[]) => {
     if (typeof window === 'undefined') return
-    localStorage.setItem(getPresetStorageKey(name, preset), JSON.stringify(keys))
+    localStorage.setItem(RULEBOOK_SKILLS_KEY, JSON.stringify(skills))
+    localStorage.setItem(RULEBOOK_SPECS_KEY, JSON.stringify(specs))
+    const meta = { updatedAt: new Date().toISOString() }
+    localStorage.setItem(RULEBOOK_META_KEY, JSON.stringify(meta))
+    setRulebookCacheInfo(meta)
   }
   const getSkillUpgradeBlips = (skill: Skill): number => {
     const baseSteps = Math.max(0, (skill.bonusDice || 0) * 3 + (skill.bonusSteps || 0))
@@ -566,7 +592,7 @@ export default function SpielerPage() {
     }
   }, [router])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { forceRulebookRefresh?: boolean }) => {
     const name = (localStorage.getItem('playerName') || '').trim()
     
     // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
@@ -597,6 +623,8 @@ export default function SpielerPage() {
 
     if (groupId) {
       const localSkills = getAvailableSkills()
+      const remoteSkills = await getAvailableSkillsFromSupabase(groupId)
+      const baseSkills = remoteSkills.length > 0 ? remoteSkills : localSkills
       const templates = await getInjuryTemplates()
       setInjuryTemplates(templates)
       const injuries = await getCharacterInjuries(groupId)
@@ -620,9 +648,19 @@ export default function SpielerPage() {
         setFantasyCalendarStart(null)
       }
       const persistedDescriptions = groupSettings?.skillDescriptions || {}
-      const localDescriptions = buildSkillDescriptionMap(localSkills)
-      const rulebookSkills = await getRulebookSkills()
-      const rulebookSpecs = await getRulebookSpecializations()
+      const localDescriptions = buildSkillDescriptionMap(baseSkills)
+      let rulebookSkills: any[] = []
+      let rulebookSpecs: any[] = []
+      const cached = loadRulebookCache()
+      if (!options?.forceRulebookRefresh && Array.isArray(cached.skills) && Array.isArray(cached.specs)) {
+        rulebookSkills = cached.skills
+        rulebookSpecs = cached.specs
+        if (cached.meta) setRulebookCacheInfo(cached.meta)
+      } else {
+        rulebookSkills = await getRulebookSkills()
+        rulebookSpecs = await getRulebookSpecializations()
+        persistRulebookCache(rulebookSkills, rulebookSpecs)
+      }
       setRulebookSpecializations(rulebookSpecs)
       const rulebookDescriptions = rulebookSkills.reduce<Record<string, string>>((acc, skill) => {
         const desc = (skill.description || '').trim()
@@ -635,8 +673,8 @@ export default function SpielerPage() {
         ...persistedDescriptions,
         ...localDescriptions,
       }
-      const mergedSkills: Skill[] = [...localSkills]
-      const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
+      const mergedSkills: Skill[] = [...baseSkills]
+      const existingKeys = new Set(baseSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
       rulebookSkills.forEach((skill) => {
         const key = getSkillMapKey(skill.name, skill.attribute)
         if (existingKeys.has(key)) return
@@ -1983,9 +2021,18 @@ export default function SpielerPage() {
                     >
                       Default 2 erstellen
                     </button>
+                    <button
+                      onClick={() => loadData({ forceRulebookRefresh: true })}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
+                    >
+                      Rulebook aktualisieren
+                    </button>
                   </div>
                   <div className="text-white/50 text-xs">
                     Default 1: {preset1Keys.length} • Default 2: {preset2Keys.length}
+                    {rulebookCacheInfo.updatedAt && (
+                      <span className="ml-2">• Rulebook: {new Date(rulebookCacheInfo.updatedAt).toLocaleString('de-DE')}</span>
+                    )}
                   </div>
                   <label className="flex items-center gap-2 text-white/80 text-sm">
                     <input

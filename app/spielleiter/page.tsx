@@ -25,7 +25,7 @@ import {
   getStorageError,
   clearStorageError,
 } from '@/lib/data'
-import { getGroupSettings, saveGroupSettings, getBestiary, upsertBestiary, removeBestiary, getInjuryTemplates, getCharacterInjuries, upsertCharacterInjury, removeCharacterInjury, getInventoryItems, saveInventoryItem, removeInventoryItem } from '@/lib/supabase-data'
+import { getGroupSettings, saveGroupSettings, getBestiary, upsertBestiary, removeBestiary, getInjuryTemplates, getCharacterInjuries, upsertCharacterInjury, removeCharacterInjury, getInventoryItems, saveInventoryItem, removeInventoryItem, getAvailableSkillsFromSupabase, saveSkillToSupabase, removeSkillFromSupabase } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
 import { calculateSkillValue, DEFAULT_COMBAT_SKILL_NAMES } from '@/lib/skills'
@@ -208,6 +208,7 @@ export default function SpielleiterPage() {
   const [sortOverviewByBlips, setSortOverviewByBlips] = useState(false)
   const [showPossibleSpecializations, setShowPossibleSpecializations] = useState(false)
   const [rulebookSpecializations, setRulebookSpecializations] = useState<any[]>([])
+  const [rulebookCacheInfo, setRulebookCacheInfo] = useState<{ updatedAt?: string }>({})
   const [shopItems, setShopItems] = useState<ShopItem[]>([])
   const [shopError, setShopError] = useState('')
   const [newShopItem, setNewShopItem] = useState({
@@ -557,6 +558,29 @@ export default function SpielleiterPage() {
     }
   }, [])
 
+  const RULEBOOK_SKILLS_KEY = 'rulebookSkillsCache'
+  const RULEBOOK_SPECS_KEY = 'rulebookSpecsCache'
+  const RULEBOOK_META_KEY = 'rulebookCacheMeta'
+  const loadRulebookCache = () => {
+    if (typeof window === 'undefined') return { skills: null, specs: null, meta: null }
+    try {
+      const skills = JSON.parse(localStorage.getItem(RULEBOOK_SKILLS_KEY) || 'null')
+      const specs = JSON.parse(localStorage.getItem(RULEBOOK_SPECS_KEY) || 'null')
+      const meta = JSON.parse(localStorage.getItem(RULEBOOK_META_KEY) || 'null')
+      return { skills, specs, meta }
+    } catch {
+      return { skills: null, specs: null, meta: null }
+    }
+  }
+  const persistRulebookCache = (skills: any[], specs: any[]) => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(RULEBOOK_SKILLS_KEY, JSON.stringify(skills))
+    localStorage.setItem(RULEBOOK_SPECS_KEY, JSON.stringify(specs))
+    const meta = { updatedAt: new Date().toISOString() }
+    localStorage.setItem(RULEBOOK_META_KEY, JSON.stringify(meta))
+    setRulebookCacheInfo(meta)
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     let blurTimeout: number | undefined
@@ -811,7 +835,7 @@ export default function SpielleiterPage() {
     }
   }, [router])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { forceRulebookRefresh?: boolean }) => {
     // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
     const { getCharactersAsync } = await import('@/lib/data')
     const allCharacters = await getCharactersAsync()
@@ -834,6 +858,8 @@ export default function SpielleiterPage() {
     // Lade Gruppenmitglieder und Kalender-Startdaten
     const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
     if (currentGroupId) {
+      const remoteSkills = await getAvailableSkillsFromSupabase(currentGroupId)
+      const baseSkills = remoteSkills.length > 0 ? remoteSkills : localSkills
       const templates = await getInjuryTemplates()
       setInjuryTemplates(templates)
       const injuries = await getCharacterInjuries(currentGroupId)
@@ -858,9 +884,19 @@ export default function SpielleiterPage() {
       }
       setPrintNotes(groupSettings?.printNotes || '')
       const persistedDescriptions = groupSettings?.skillDescriptions || {}
-      const localDescriptions = buildSkillDescriptionMap(localSkills)
-      const rulebookSkills = await getRulebookSkills()
-      const rulebookSpecs = await getRulebookSpecializations()
+      const localDescriptions = buildSkillDescriptionMap(baseSkills)
+      let rulebookSkills: any[] = []
+      let rulebookSpecs: any[] = []
+      const cached = loadRulebookCache()
+      if (!options?.forceRulebookRefresh && Array.isArray(cached.skills) && Array.isArray(cached.specs)) {
+        rulebookSkills = cached.skills
+        rulebookSpecs = cached.specs
+        if (cached.meta) setRulebookCacheInfo(cached.meta)
+      } else {
+        rulebookSkills = await getRulebookSkills()
+        rulebookSpecs = await getRulebookSpecializations()
+        persistRulebookCache(rulebookSkills, rulebookSpecs)
+      }
       setRulebookSpecializations(rulebookSpecs)
       const rulebookDescriptions = rulebookSkills.reduce<Record<string, string>>((acc, skill) => {
         const desc = (skill.description || '').trim()
@@ -887,7 +923,7 @@ export default function SpielleiterPage() {
           }
         }
       }
-      const mergedSkills = mergeRulebookSkills(localSkills, rulebookSkills)
+      const mergedSkills = mergeRulebookSkills(baseSkills, rulebookSkills)
       const withDescriptions = mergedSkills.map((skill) => {
         if (skill.description) return skill
         const key = normalizeSkillKey(skill.name)
@@ -3644,6 +3680,19 @@ export default function SpielleiterPage() {
           <div className="space-y-6">
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h2 className="text-2xl font-bold text-white mb-4">Fertigkeiten verwalten</h2>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => loadData({ forceRulebookRefresh: true })}
+                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold"
+                >
+                  Rulebook aktualisieren
+                </button>
+                {rulebookCacheInfo.updatedAt && (
+                  <span className="text-white/50 text-sm">
+                    Rulebook: {new Date(rulebookCacheInfo.updatedAt).toLocaleString('de-DE')}
+                  </span>
+                )}
+              </div>
               
               {/* Neue Fertigkeit hinzufügen / Bearbeiten */}
               <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10">
@@ -3721,12 +3770,22 @@ export default function SpielleiterPage() {
                         <button
                           onClick={() => {
                             if (editingSkill.name.trim()) {
-                              updateSkill(editingSkill.id, {
+                              const updates = {
                                 name: editingSkill.name.trim(),
                                 attribute: editingSkill.attribute,
                                 isWeakened: editingSkill.isWeakened,
                                 description: editingSkill.description || undefined,
-                              })
+                              }
+                              updateSkill(editingSkill.id, updates)
+                              if (groupId) {
+                                saveSkillToSupabase(groupId, {
+                                  ...editingSkill,
+                                  ...updates,
+                                  bonusDice: editingSkill.bonusDice || 0,
+                                  bonusSteps: editingSkill.bonusSteps || 0,
+                                  specializations: editingSkill.specializations || [],
+                                })
+                              }
                               pushRulebookReview(
                                 editingSkill.name.trim(),
                                 editingSkill.attribute,
@@ -3767,6 +3826,9 @@ export default function SpielleiterPage() {
                               const storageError = getStorageError()
                               setStorageError(storageError || 'Fertigkeit konnte nicht gespeichert werden.')
                               return
+                            }
+                            if (groupId) {
+                              saveSkillToSupabase(groupId, created)
                             }
                             pushRulebookReview(
                               newSkill.name.trim(),
@@ -3873,7 +3935,17 @@ export default function SpielleiterPage() {
                               </button>
                               <button
                                 onClick={() => {
-                                  updateSkill(skill.id, { isWeakened: !skill.isWeakened })
+                                  const nextWeakened = !skill.isWeakened
+                                  updateSkill(skill.id, { isWeakened: nextWeakened })
+                                  if (groupId) {
+                                    saveSkillToSupabase(groupId, {
+                                      ...skill,
+                                      isWeakened: nextWeakened,
+                                      bonusDice: skill.bonusDice || 0,
+                                      bonusSteps: skill.bonusSteps || 0,
+                                      specializations: skill.specializations || [],
+                                    })
+                                  }
                                   loadData()
                                 }}
                                 className={`px-3 py-1 rounded text-sm ${
@@ -3888,6 +3960,9 @@ export default function SpielleiterPage() {
                                 onClick={() => {
                                   if (confirm(`Möchtest du "${skill.name}" wirklich löschen?`)) {
                                     removeSkill(skill.id)
+                                    if (groupId) {
+                                      removeSkillFromSupabase(groupId, skill.id)
+                                    }
                                     loadData()
                                   }
                                 }}

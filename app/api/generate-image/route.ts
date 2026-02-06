@@ -129,78 +129,136 @@ export async function POST(request: Request) {
         : Array.isArray(body.promptItems) && body.promptItems.length > 0
           ? `${body.promptItems.join(', ')}${body.background ? `. Hintergrund: ${body.background}` : ''}`
           : buildPrompt(body)
-    const geminiInstruction = `Act as an expert AI image prompter. Expand this description into a professional, highly detailed English image prompt for a high-quality AI generator: "${rawPrompt}". Output ONLY the final prompt text.`
+    const geminiInstruction = `
+      Act as an expert AI image prompter for the world of 'Fallcrest'.
+      Your task is to transform the provided character data into a highly detailed, atmospheric English image prompt.
+
+      Follow these strict rules for the composition:
+      - Style: Dark Fantasy Oil Painting, 'Fallcrest' aesthetic (mystical, foggy, dramatic shadows, moody atmosphere).
+      - Textures: Describe physical details vividly (e.g., 'notched iron', 'weathered leather', 'tattered cloth', 'damp skin').
+      - Lighting: Use 'Chiaroscuro' lighting (extreme contrast between light and shadow).
+      - Background: Seamlessly integrate the setting into the scene.
+
+      Input Data: "${rawPrompt}"
+
+      Output ONLY the final English prompt text. No commentary, no introduction.
+    `;
     
     const result = await model.generateContent(geminiInstruction)
     const optimizedPrompt = result.response.text().trim()
 
     // 2. Pollinations URL generieren (Kostenlos & ohne Key-Probleme)
-    const seed = Math.floor(Math.random() * 999999)
-    const encodedPrompt = encodeURIComponent(optimizedPrompt)
-    const candidates = [
-      `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=432&model=flux&seed=${seed}&nologo=true`,
-      `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=432&model=flux&seed=${seed}&nologo=true&format=png`,
-      `https://image.pollinations.ai/prompt/${encodedPrompt}.png?width=768&height=432&model=flux&seed=${seed}&nologo=true`,
-    ]
-
-    let imageBuffer: Buffer | null = null
-    let contentType = ''
+    let pollinationsBuffer: Buffer | null = null
+    let pollinationsContentType = ''
     let lastErrorText = ''
-    for (const url of candidates) {
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const response = await fetchWithTimeout(
-            url,
-            { cache: 'no-store', headers: { Accept: 'image/*' } },
-            15000
-          )
-          if (!response.ok) {
-            const errorText = await response.text()
-            lastErrorText = `${response.status} ${response.statusText}: ${errorText}`.slice(0, 2000)
+    try {
+      const seed = Math.floor(Math.random() * 999999)
+      const encodedPrompt = encodeURIComponent(optimizedPrompt)
+      const candidates = [
+        `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=432&model=flux&seed=${seed}&nologo=true`,
+        `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=432&model=flux&seed=${seed}&nologo=true&format=png`,
+        `https://image.pollinations.ai/prompt/${encodedPrompt}.png?width=768&height=432&model=flux&seed=${seed}&nologo=true`,
+      ]
+      for (const url of candidates) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const response = await fetchWithTimeout(
+              url,
+              { cache: 'no-store', headers: { Accept: 'image/*' } },
+              15000
+            )
+            if (!response.ok) {
+              const errorText = await response.text()
+              lastErrorText = `${response.status} ${response.statusText}: ${errorText}`.slice(0, 2000)
+              await delay(400)
+              continue
+            }
+            pollinationsContentType = response.headers.get('content-type') || ''
+            const buffer = Buffer.from(await response.arrayBuffer())
+            if (!pollinationsContentType.startsWith('image/') || buffer.length < 10_000) {
+              const fallbackText = buffer.toString('utf-8')
+              lastErrorText = `Unerwartete Antwort (${pollinationsContentType || 'unknown'}), size=${buffer.length}. ${fallbackText.slice(0, 500)}`
+              await delay(400)
+              continue
+            }
+            pollinationsBuffer = buffer
+            break
+          } catch (error: any) {
+            lastErrorText = `Bilddienst nicht erreichbar: ${error?.message || 'Unbekannter Fehler'}`
             await delay(400)
-            continue
           }
-          contentType = response.headers.get('content-type') || ''
-          const buffer = Buffer.from(await response.arrayBuffer())
-          if (!contentType.startsWith('image/') || buffer.length < 10_000) {
-            const fallbackText = buffer.toString('utf-8')
-            lastErrorText = `Unerwartete Antwort (${contentType || 'unknown'}), size=${buffer.length}. ${fallbackText.slice(0, 500)}`
-            await delay(400)
-            continue
-          }
-          imageBuffer = buffer
-          break
-        } catch (error: any) {
-          lastErrorText = `Bilddienst nicht erreichbar: ${error?.message || 'Unbekannter Fehler'}`
-          await delay(400)
         }
+        if (pollinationsBuffer) break
       }
-      if (imageBuffer) break
+    } catch (error: any) {
+      lastErrorText = `Pollinations fehlgeschlagen: ${error?.message || 'Unbekannter Fehler'}`
     }
 
-    if (!imageBuffer) {
+    if (pollinationsBuffer) {
+      const baseName = getBaseImageName(body)
+      const baseSlug = normalizeSlug(baseName)
+      ensureDirectoryExists(IMAGE_DIR)
+      const nextVersion = getNextVersion(IMAGE_DIR, baseSlug)
+      const versionTag = String(nextVersion).padStart(3, '0')
+      const fileName = `${baseSlug}_v${versionTag}.png`
+      const filePath = path.join(IMAGE_DIR, fileName)
+
+      fs.writeFileSync(filePath, pollinationsBuffer)
+
+      return NextResponse.json({
+        imageUrl: `/images/${fileName}`,
+        fileName,
+        prompt: optimizedPrompt
+      }, {
+        headers: { 'Cache-Control': 'no-store' }
+      })
+    }
+
+    // 3. Fallback: Hugging Face Inference API (SDXL)
+    const hfToken = process.env.HF_ACCESS_TOKEN
+    if (!hfToken) {
       return NextResponse.json(
         {
           error: 'Bild konnte nicht korrekt geladen werden.',
-          details: lastErrorText || 'Keine Antwort von Bilddienst.',
+          details: lastErrorText || 'HF_ACCESS_TOKEN fehlt für den Fallback.',
         },
         { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )
     }
 
-    const baseName = getBaseImageName(body)
-    const baseSlug = normalizeSlug(baseName)
-    ensureDirectoryExists(IMAGE_DIR)
-    const nextVersion = getNextVersion(IMAGE_DIR, baseSlug)
-    const versionTag = String(nextVersion).padStart(3, '0')
-    const fileName = `${baseSlug}_v${versionTag}.png`
-    const filePath = path.join(IMAGE_DIR, fileName)
+    const hfResponse = await fetchWithTimeout(
+      'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${hfToken}`,
+          Accept: 'image/*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ inputs: optimizedPrompt }),
+      },
+      30000
+    )
 
-    fs.writeFileSync(filePath, imageBuffer)
+    if (!hfResponse.ok) {
+      const errorText = await hfResponse.text()
+      return NextResponse.json(
+        {
+          error: 'Bild konnte nicht korrekt geladen werden.',
+          details: `HF ${hfResponse.status} ${hfResponse.statusText}: ${errorText}`.slice(0, 2000),
+        },
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
+      )
+    }
+
+    const hfContentType = hfResponse.headers.get('content-type') || 'image/png'
+    const hfBuffer = Buffer.from(await hfResponse.arrayBuffer())
+    const base64 = hfBuffer.toString('base64')
+    const dataUrl = `data:${hfContentType};base64,${base64}`
 
     return NextResponse.json({
-      imageUrl: `/images/${fileName}`,
-      fileName,
+      imageUrl: dataUrl,
+      fileName: null,
       prompt: optimizedPrompt
     }, {
       headers: { 'Cache-Control': 'no-store' }
