@@ -52,6 +52,7 @@ export interface Character {
   createdDate?: Date // Erstellt am
   lastPlayedDate?: Date // Zuletzt gespielt am
   deletedDate?: Date // Gelöscht am (soft delete)
+  updatedAt?: Date // Letzte Änderung (für Konfliktauflösung)
   // Grundwerte bei Erstellung (dauerhaft gespeichert)
   baseAttributes?: { [key: string]: D6Value }
   baseSkills?: Skill[]

@@ -155,16 +155,25 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       profession,
       ...bestSkills,
     ].filter(Boolean)
-    const selectedPromptLabels = portraitPromptOptions
-      .filter(option => selectedPortraitPromptIds.includes(option.id))
-      .map(option => option.label)
-    const promptOverride = portraitPromptOptions.length > 0
-      ? buildPromptText({
-          type: 'portrait',
-          items: selectedPromptLabels,
-          background: portraitPromptBackground,
-        })
-      : undefined
+    const selectedPromptLabels = Array.isArray(portraitPromptOptions)
+      ? portraitPromptOptions
+          .filter(option => selectedPortraitPromptIds.includes(option.id))
+          .map(option => option.label)
+      : []
+    let promptOverride: string | undefined
+    try {
+      promptOverride = portraitPromptOptions.length > 0
+        ? buildPromptText({
+            type: 'portrait',
+            items: selectedPromptLabels,
+            background: portraitPromptBackground,
+          })
+        : undefined
+    } catch (error) {
+      console.warn('Prompt-Vorschau fehlgeschlagen.', error)
+      setPortraitError('Prompt-Vorschau fehlgeschlagen. Bitte erneut versuchen.')
+      return
+    }
 
     setPortraitLoading(true)
     setPortraitError('')
@@ -278,6 +287,7 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       tags: tags.length > 0 ? tags : undefined,
       createdDate: editingNpc?.createdDate || new Date(),
       lastPlayedDate: new Date(),
+      updatedAt: new Date(),
     }
 
     onComplete(npc)

@@ -98,10 +98,11 @@ export default function CharacterCreation({
       alignment: selectedAlignment,
       createdDate: new Date(),
       lastPlayedDate: new Date(),
+      updatedAt: new Date(),
     }
 
     const updated = [...characters, newCharacter]
-    saveCharacters(updated)
+    saveCharacters(updated, { touchedIds: [newCharacter.id] })
     onComplete(newCharacter)
   }
 

@@ -29,6 +29,11 @@ const emitStorageError = () => {
   window.dispatchEvent(new CustomEvent('storage-error', { detail: lastStorageError }))
 }
 
+const reportRemoteSaveFailure = (message: string) => {
+  lastStorageError = message
+  emitStorageError()
+}
+
 export const getStorageError = () => lastStorageError
 export const clearStorageError = () => {
   lastStorageError = null
@@ -64,6 +69,7 @@ export const getCharacters = (): Character[] => {
       createdDate: char.createdDate ? new Date(char.createdDate) : undefined,
       lastPlayedDate: char.lastPlayedDate ? new Date(char.lastPlayedDate) : undefined,
       deletedDate: char.deletedDate ? new Date(char.deletedDate) : undefined,
+      updatedAt: char.updatedAt ? new Date(char.updatedAt) : undefined,
     }))
   }
   // Keine Standard-Charaktere mehr - alle Charaktere kommen aus Supabase/localStorage
@@ -71,24 +77,60 @@ export const getCharacters = (): Character[] => {
 }
 
 // Synchron für Kompatibilität (localStorage)
-export const saveCharacters = (characters: Character[]): void => {
+type SaveCharactersOptions = {
+  touchedIds?: string[]
+}
+
+const mergeCharactersByUpdatedAt = (remote: Character[], local: Character[]) => {
+  const localById = new Map(local.map((char) => [char.id, char]))
+  const remoteIds = new Set<string>()
+  const merged = remote.map((remoteChar) => {
+    remoteIds.add(remoteChar.id)
+    const localChar = localById.get(remoteChar.id)
+    if (!localChar || !localChar.updatedAt || !remoteChar.updatedAt) return remoteChar
+    return remoteChar.updatedAt >= localChar.updatedAt ? remoteChar : localChar
+  })
+  const localOnly = local.filter((char) => !remoteIds.has(char.id))
+  return [...merged, ...localOnly]
+}
+
+export const saveCharacters = (characters: Character[], options?: SaveCharactersOptions): void => {
   if (typeof window === 'undefined') return
   
+  const touchedIds = new Set(options?.touchedIds || [])
+  const now = new Date()
+  const stamped = characters.map((char) => {
+    if (touchedIds.has(char.id)) {
+      return { ...char, updatedAt: now }
+    }
+    if (!char.updatedAt) {
+      return { ...char, updatedAt: now }
+    }
+    return char
+  })
+
   // Versuche auch Supabase zu speichern (async im Hintergrund)
   if (isSupabaseAvailable()) {
     const groupId = localStorage.getItem('groupId')
     if (groupId) {
       // Speichere im Hintergrund (nicht blockierend)
-      characters.forEach(char => {
-        saveCharacterToSupabase(groupId, char).catch(err => {
-          console.warn('Failed to save to Supabase:', err)
-        })
+      stamped.forEach(char => {
+        saveCharacterToSupabase(groupId, char)
+          .then((ok) => {
+            if (!ok) {
+              reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Es existiert vermutlich eine neuere Version.')
+            }
+          })
+          .catch(err => {
+            console.warn('Failed to save to Supabase:', err)
+            reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Bitte Verbindung prüfen.')
+          })
       })
     }
   }
   
   // Immer auch localStorage (für Fallback)
-  safeSetItem('characters', JSON.stringify(characters))
+  safeSetItem('characters', JSON.stringify(stamped))
 }
 
 // Neue async Funktionen für Supabase und Datei-Storage
@@ -105,9 +147,11 @@ export const getCharactersAsync = async (): Promise<Character[]> => {
   if (isFileStorageEnabled()) {
     const fileCharacters = await loadCharactersFromFile(groupId)
     if (fileCharacters.length > 0) {
+      const localCharacters = getCharacters()
+      const merged = mergeCharactersByUpdatedAt(fileCharacters, localCharacters)
       // Auch in localStorage speichern für Offline-Fallback
-      safeSetItem('characters', JSON.stringify(fileCharacters))
-      return fileCharacters
+      safeSetItem('characters', JSON.stringify(merged))
+      return merged
     }
   }
   
@@ -115,15 +159,17 @@ export const getCharactersAsync = async (): Promise<Character[]> => {
   if (isSupabaseAvailable()) {
     const characters = await getCharactersFromSupabase(groupId)
     if (characters.length > 0) {
+      const localCharacters = getCharacters()
+      const merged = mergeCharactersByUpdatedAt(characters, localCharacters)
       // Auch in localStorage speichern für Offline-Fallback
-      safeSetItem('characters', JSON.stringify(characters))
+      safeSetItem('characters', JSON.stringify(merged))
       // Optional: Auch in Dateien speichern (Backup)
       if (isFileStorageEnabled()) {
-        await saveCharactersToFile(groupId, characters).catch(err => {
+        await saveCharactersToFile(groupId, merged).catch(err => {
           console.warn('Fehler beim Speichern in Dateien:', err)
         })
       }
-      return characters
+      return merged
     }
   }
   
@@ -135,16 +181,17 @@ export const saveCharacterAsync = async (character: Character): Promise<void> =>
   if (typeof window === 'undefined') return
   
   const groupId = localStorage.getItem('groupId')
+  const nextCharacter = { ...character, updatedAt: new Date() }
   
   // Immer auch localStorage
   const characters = getCharacters()
-  const index = characters.findIndex(c => c.id === character.id)
+  const index = characters.findIndex(c => c.id === nextCharacter.id)
   if (index >= 0) {
-    characters[index] = character
+    characters[index] = nextCharacter
   } else {
-    characters.push(character)
+    characters.push(nextCharacter)
   }
-  saveCharacters(characters)
+  saveCharacters(characters, { touchedIds: [nextCharacter.id] })
   
   // Speichere in Datei-Storage (wenn aktiviert)
   if (isFileStorageEnabled() && groupId) {
@@ -155,9 +202,16 @@ export const saveCharacterAsync = async (character: Character): Promise<void> =>
   
   // Speichere in Supabase (wenn verfügbar)
   if (isSupabaseAvailable() && groupId) {
-    await saveCharacterToSupabase(groupId, character).catch(err => {
-      console.warn('Fehler beim Speichern in Supabase:', err)
-    })
+    await saveCharacterToSupabase(groupId, nextCharacter)
+      .then((ok) => {
+        if (!ok) {
+          reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Es existiert vermutlich eine neuere Version.')
+        }
+      })
+      .catch(err => {
+        console.warn('Fehler beim Speichern in Supabase:', err)
+        reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Bitte Verbindung prüfen.')
+      })
   }
 }
 
@@ -313,11 +367,12 @@ export const deleteCharacter = (characterId: string): boolean => {
   const deletedCharacter: DeletedCharacter = {
     ...character,
     deletedDate: new Date(),
+    updatedAt: new Date(),
   }
 
   // Entferne aus aktiven Charakteren
   const updatedCharacters = characters.filter(c => c.id !== characterId)
-  saveCharacters(updatedCharacters)
+  saveCharacters(updatedCharacters, { touchedIds: [characterId] })
 
   // Füge zu gelöschten Charakteren hinzu
   const deletedCharacters = getDeletedCharacters()
@@ -339,12 +394,13 @@ export const restoreCharacter = (characterId: string): boolean => {
   const restoredCharacter: Character = {
     ...character,
     lastPlayedDate: new Date(), // Aktualisiere lastPlayedDate
+    updatedAt: new Date(),
   }
 
   // Füge zu aktiven Charakteren hinzu
   const characters = getCharacters()
   characters.push(restoredCharacter)
-  saveCharacters(characters)
+  saveCharacters(characters, { touchedIds: [characterId] })
 
   // Entferne aus gelöschten Charakteren
   const updatedDeleted = deletedCharacters.filter(c => c.id !== characterId)
@@ -361,11 +417,12 @@ export const updateLastPlayedDate = (characterId: string) => {
       return {
         ...char,
         lastPlayedDate: new Date(),
+        updatedAt: new Date(),
       }
     }
     return char
   })
-  saveCharacters(updated)
+  saveCharacters(updated, { touchedIds: [characterId] })
 }
 
 // Skill-Verwaltung (globale Skill-Liste)

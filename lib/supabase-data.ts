@@ -468,6 +468,7 @@ export const getCharactersFromSupabase = async (groupId: string): Promise<Charac
     createdDate: char.created_date ? new Date(char.created_date) : undefined,
     lastPlayedDate: char.last_played_date ? new Date(char.last_played_date) : undefined,
     deletedDate: char.deleted_date ? new Date(char.deleted_date) : undefined,
+    updatedAt: char.updated_at ? new Date(char.updated_at) : undefined,
     baseAttributes: char.base_attributes,
     baseSkills: char.base_skills,
     attributePointsUsed: char.attribute_points_used,
@@ -484,6 +485,26 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
 
   const tagsFromNotes = extractTagsFromText(character.notes || '')
   const tags = character.tags && character.tags.length > 0 ? character.tags : tagsFromNotes
+
+  if (character.updatedAt) {
+    const { data: current, error: currentError } = await supabase
+      .from('characters')
+      .select('updated_at')
+      .eq('id', character.id)
+      .eq('group_id', groupId)
+      .maybeSingle()
+    if (!currentError && current?.updated_at) {
+      const remoteUpdatedAt = new Date(current.updated_at)
+      if (remoteUpdatedAt > character.updatedAt) {
+        console.warn('Supabase-Update abgelehnt: Neuere Version vorhanden.', {
+          characterId: character.id,
+          local: character.updatedAt,
+          remote: remoteUpdatedAt,
+        })
+        return false
+      }
+    }
+  }
 
   const { error } = await supabase
     .from('characters')
@@ -508,6 +529,7 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
       created_date: character.createdDate?.toISOString(),
       last_played_date: character.lastPlayedDate?.toISOString(),
       deleted_date: character.deletedDate?.toISOString(),
+      updated_at: (character.updatedAt || new Date()).toISOString(),
       base_attributes: character.baseAttributes,
       base_skills: character.baseSkills,
       attribute_points_used: character.attributePointsUsed,

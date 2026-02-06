@@ -334,16 +334,25 @@ export default function CharacterCreationExtended({
     const equipmentText = visibleEquipment.trim()
     const resolvedRace = race === 'Andere' ? otherRace.trim() : race
     const resolvedClass = className === 'Andere' ? otherClass.trim() : className
-    const selectedPromptLabels = profilePromptOptions
-      .filter(option => selectedProfilePromptIds.includes(option.id))
-      .map(option => option.label)
-    const promptOverride = profilePromptOptions.length > 0
-      ? buildPromptText({
-          type: 'portrait',
-          items: selectedPromptLabels,
-          background: profilePromptBackground,
-        })
-      : undefined
+    const selectedPromptLabels = Array.isArray(profilePromptOptions)
+      ? profilePromptOptions
+          .filter(option => selectedProfilePromptIds.includes(option.id))
+          .map(option => option.label)
+      : []
+    let promptOverride: string | undefined
+    try {
+      promptOverride = profilePromptOptions.length > 0
+        ? buildPromptText({
+            type: 'portrait',
+            items: selectedPromptLabels,
+            background: profilePromptBackground,
+          })
+        : undefined
+    } catch (error) {
+      console.warn('Prompt-Vorschau fehlgeschlagen.', error)
+      setProfileImageError('Prompt-Vorschau fehlgeschlagen. Bitte erneut versuchen.')
+      return
+    }
 
     setProfileImageLoading(true)
     setProfileImageError('')
@@ -731,6 +740,7 @@ export default function CharacterCreationExtended({
       skills: finalSkills,
       alignment: selectedAlignment,
       lastPlayedDate: new Date(),
+      updatedAt: new Date(),
       baseAttributes: existingCharacter?.baseAttributes || { ...attributes },
       baseSkills: existingCharacter?.baseSkills || finalSkills.map(s => ({ ...s })),
       attributePointsUsed: usedAttributePoints,
@@ -744,7 +754,7 @@ export default function CharacterCreationExtended({
     const updated = existingCharacter
       ? characters.map((char) => (char.id === newCharacter.id ? newCharacter : char))
       : [...characters, newCharacter]
-    saveCharacters(updated)
+    saveCharacters(updated, { touchedIds: [newCharacter.id] })
     onComplete(newCharacter)
   }
 

@@ -54,6 +54,19 @@ const DEFAULT_MONSTER_ATTRIBUTES = {
   Magie: '0D',
 }
 
+type BackupFile = {
+  name: string
+  size: number
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+type BackupPlayer = {
+  playerName: string
+  characterCount: number
+  characters: { id: string; name: string }[]
+}
+
 export default function SpielleiterPage() {
   const MAX_SHARED_IMAGE_BYTES = 2 * 1024 * 1024
   const router = useRouter()
@@ -134,6 +147,8 @@ export default function SpielleiterPage() {
   const isUserEditingRef = useRef(false)
   const lastInputAtRef = useRef(0)
   const syncIndicatorTimeoutRef = useRef<number | null>(null)
+  const isSavingRef = useRef(false)
+  const saveCooldownRef = useRef<number | null>(null)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [showNpcCreation, setShowNpcCreation] = useState(false)
   const [editingNpc, setEditingNpc] = useState<Character | null>(null)
@@ -156,6 +171,15 @@ export default function SpielleiterPage() {
     twoHanded: false,
     description: '',
   })
+  const [backupFiles, setBackupFiles] = useState<BackupFile[]>([])
+  const [backupPlayers, setBackupPlayers] = useState<BackupPlayer[]>([])
+  const [backupSearch, setBackupSearch] = useState('')
+  const [selectedBackupFile, setSelectedBackupFile] = useState<string | null>(null)
+  const [selectedBackupPlayers, setSelectedBackupPlayers] = useState<string[]>([])
+  const [backupLoading, setBackupLoading] = useState(false)
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [backupError, setBackupError] = useState('')
+  const [backupStatus, setBackupStatus] = useState('')
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
     if (!filter) return true
@@ -165,6 +189,12 @@ export default function SpielleiterPage() {
   const normalizedJournalTagFilter = normalizeTag(journalTagFilter)
   const normalizedBestiaryTagFilter = normalizeTag(bestiaryTagFilter)
   const filteredBestiary = bestiary.filter(monster => matchesTag(monster.tags, normalizedBestiaryTagFilter))
+  const normalizedBackupSearch = backupSearch.trim().toLowerCase()
+  const filteredBackupPlayers = backupPlayers.filter((player) => {
+    if (!normalizedBackupSearch) return true
+    if (player.playerName.toLowerCase().includes(normalizedBackupSearch)) return true
+    return player.characters.some((char) => char.name.toLowerCase().includes(normalizedBackupSearch))
+  })
   const matchesJournalCategory = (entry: JournalEntry): boolean => {
     if (journalCategory === 'all') return true
     return matchesTag(entry.tags, journalCategory)
@@ -449,16 +479,25 @@ export default function SpielleiterPage() {
   }
 
   const handleGenerateJournalIllustration = async () => {
-    const selectedPromptLabels = journalPromptOptions
-      .filter(option => selectedJournalPromptIds.includes(option.id))
-      .map(option => option.label)
-    const promptOverride = journalPromptOptions.length > 0
-      ? buildPromptText({
-          type: 'event',
-          items: selectedPromptLabels,
-          background: journalPromptBackground,
-        })
-      : undefined
+    const selectedPromptLabels = Array.isArray(journalPromptOptions)
+      ? journalPromptOptions
+          .filter(option => selectedJournalPromptIds.includes(option.id))
+          .map(option => option.label)
+      : []
+    let promptOverride: string | undefined
+    try {
+      promptOverride = journalPromptOptions.length > 0
+        ? buildPromptText({
+            type: 'event',
+            items: selectedPromptLabels,
+            background: journalPromptBackground,
+          })
+        : undefined
+    } catch (error) {
+      console.warn('Prompt-Vorschau fehlgeschlagen.', error)
+      setJournalIllustrationError('Prompt-Vorschau fehlgeschlagen. Bitte erneut versuchen.')
+      return
+    }
     setJournalIllustrationLoading(true)
     setJournalIllustrationError('')
     try {
@@ -583,6 +622,175 @@ export default function SpielleiterPage() {
       setJournalIllustrationSaved(false)
     }
   }, [editingEntry])
+
+  const markSaving = useCallback((cooldownMs = 1500) => {
+    if (typeof window === 'undefined') return
+    isSavingRef.current = true
+    if (saveCooldownRef.current) {
+      window.clearTimeout(saveCooldownRef.current)
+    }
+    saveCooldownRef.current = window.setTimeout(() => {
+      isSavingRef.current = false
+    }, cooldownMs)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (saveCooldownRef.current) {
+        window.clearTimeout(saveCooldownRef.current)
+      }
+    }
+  }, [])
+
+  const formatBackupSize = (bytes: number) => {
+    if (!bytes) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB']
+    let size = bytes
+    let unitIndex = 0
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024
+      unitIndex += 1
+    }
+    return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+  }
+
+  const fetchBackupList = useCallback(async () => {
+    if (!groupId || typeof window === 'undefined') return
+    const playerName = localStorage.getItem('playerName') || ''
+    if (!playerName) return
+    setBackupLoading(true)
+    setBackupError('')
+    try {
+      const response = await fetch(
+        `/api/backup/list?groupId=${encodeURIComponent(groupId)}&playerName=${encodeURIComponent(playerName)}`
+      )
+      const json = await response.json()
+      if (!response.ok) {
+        throw new Error(json?.error || 'Backups konnten nicht geladen werden.')
+      }
+      setBackupFiles(Array.isArray(json?.files) ? json.files : [])
+    } catch (error: any) {
+      setBackupError(error?.message || 'Backups konnten nicht geladen werden.')
+    } finally {
+      setBackupLoading(false)
+    }
+  }, [groupId])
+
+  useEffect(() => {
+    if (!groupId) return
+    fetchBackupList()
+  }, [groupId, fetchBackupList])
+
+  const handleCreateBackup = async () => {
+    if (!groupId || typeof window === 'undefined') return
+    const playerName = localStorage.getItem('playerName') || ''
+    if (!playerName) return
+    setBackupBusy(true)
+    setBackupStatus('')
+    setBackupError('')
+    try {
+      const response = await fetch('/api/backup/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId, playerName }),
+      })
+      const json = await response.json()
+      if (!response.ok) {
+        throw new Error(json?.error || 'Backup fehlgeschlagen.')
+      }
+      setBackupStatus(`Backup erstellt: ${json?.fileName || 'OK'}`)
+      await fetchBackupList()
+    } catch (error: any) {
+      setBackupError(error?.message || 'Backup fehlgeschlagen.')
+    } finally {
+      setBackupBusy(false)
+    }
+  }
+
+  const handleDownloadBackup = async (fileName: string) => {
+    if (!groupId || typeof window === 'undefined') return
+    const playerName = localStorage.getItem('playerName') || ''
+    if (!playerName) return
+    setBackupBusy(true)
+    setBackupError('')
+    try {
+      const response = await fetch(
+        `/api/backup/download?groupId=${encodeURIComponent(groupId)}&playerName=${encodeURIComponent(playerName)}&file=${encodeURIComponent(fileName)}`
+      )
+      const json = await response.json()
+      if (!response.ok || !json?.url) {
+        throw new Error(json?.error || 'Download fehlgeschlagen.')
+      }
+      window.open(json.url, '_blank', 'noopener,noreferrer')
+    } catch (error: any) {
+      setBackupError(error?.message || 'Download fehlgeschlagen.')
+    } finally {
+      setBackupBusy(false)
+    }
+  }
+
+  const handleLoadBackupPlayers = async (fileName: string) => {
+    if (!groupId || typeof window === 'undefined') return
+    const playerName = localStorage.getItem('playerName') || ''
+    if (!playerName) return
+    setBackupBusy(true)
+    setBackupError('')
+    setBackupStatus('')
+    setSelectedBackupFile(fileName)
+    setBackupPlayers([])
+    setSelectedBackupPlayers([])
+    try {
+      const response = await fetch(
+        `/api/backup/players?groupId=${encodeURIComponent(groupId)}&playerName=${encodeURIComponent(playerName)}&file=${encodeURIComponent(fileName)}`
+      )
+      const json = await response.json()
+      if (!response.ok) {
+        throw new Error(json?.error || 'Backup konnte nicht gelesen werden.')
+      }
+      setBackupPlayers(Array.isArray(json?.players) ? json.players : [])
+    } catch (error: any) {
+      setBackupError(error?.message || 'Backup konnte nicht gelesen werden.')
+    } finally {
+      setBackupBusy(false)
+    }
+  }
+
+  const handleRestoreBackupPlayers = async () => {
+    if (!groupId || !selectedBackupFile || typeof window === 'undefined') return
+    const playerName = localStorage.getItem('playerName') || ''
+    if (!playerName) return
+    if (selectedBackupPlayers.length === 0) {
+      setBackupError('Bitte mindestens einen Spieler auswählen.')
+      return
+    }
+    if (!confirm('Ausgewählte Spieler als *_V2 importieren?')) return
+    setBackupBusy(true)
+    setBackupError('')
+    setBackupStatus('')
+    try {
+      const response = await fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId,
+          playerName,
+          fileName: selectedBackupFile,
+          players: selectedBackupPlayers,
+          suffix: '_V2',
+        }),
+      })
+      const json = await response.json()
+      if (!response.ok) {
+        throw new Error(json?.error || 'Import fehlgeschlagen.')
+      }
+      setBackupStatus(`Import abgeschlossen: ${json?.imported || 0} Charaktere.`)
+      await loadData()
+    } catch (error: any) {
+      setBackupError(error?.message || 'Import fehlgeschlagen.')
+    } finally {
+      setBackupBusy(false)
+    }
+  }
 
   const validateGroupAccess = useCallback(async (groupId: string, playerName: string, role: string) => {
     const { validateGroupMembership } = await import('@/lib/supabase-data')
@@ -729,6 +937,7 @@ export default function SpielleiterPage() {
         || activeEl instanceof HTMLSelectElement
         || (activeEl instanceof HTMLElement && activeEl.isContentEditable)
       if (Date.now() - lastInputAtRef.current < 1500) return
+      if (isSavingRef.current) return
       if (isUserEditingRef.current || isEditingElement || showNpcCreation || Boolean(editingMonster)) return
       loadData()
     }, 5000) // Alle 5 Sekunden
@@ -743,6 +952,7 @@ export default function SpielleiterPage() {
     const handleRealtimeChange = () => {
       if (showNpcCreation || Boolean(editingMonster)) return
       if (isUserEditingRef.current) return
+      if (isSavingRef.current) return
       loadData()
       setShowSyncIndicator(true)
       if (syncIndicatorTimeoutRef.current) {
@@ -789,8 +999,10 @@ export default function SpielleiterPage() {
       if (char.deletedDate || char.isNPC) return char
       return updater(char)
     })
+    const touchedIds = updated.filter((char) => !char.deletedDate && !char.isNPC).map((char) => char.id)
     setCharacters(updated)
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds })
   }
 
   const parseRewardValue = (value: string): number | null => {
@@ -820,16 +1032,25 @@ export default function SpielleiterPage() {
   }
 
   const handleGenerateMonsterImage = async () => {
-    const selectedPromptLabels = monsterPromptOptions
-      .filter(option => selectedMonsterPromptIds.includes(option.id))
-      .map(option => option.label)
-    const promptOverride = monsterPromptOptions.length > 0
-      ? buildPromptText({
-          type: 'monster',
-          items: selectedPromptLabels,
-          background: monsterPromptBackground,
-        })
-      : undefined
+    const selectedPromptLabels = Array.isArray(monsterPromptOptions)
+      ? monsterPromptOptions
+          .filter(option => selectedMonsterPromptIds.includes(option.id))
+          .map(option => option.label)
+      : []
+    let promptOverride: string | undefined
+    try {
+      promptOverride = monsterPromptOptions.length > 0
+        ? buildPromptText({
+            type: 'monster',
+            items: selectedPromptLabels,
+            background: monsterPromptBackground,
+          })
+        : undefined
+    } catch (error) {
+      console.warn('Prompt-Vorschau fehlgeschlagen.', error)
+      setMonsterImageError('Prompt-Vorschau fehlgeschlagen. Bitte erneut versuchen.')
+      return
+    }
     setMonsterImageLoading(true)
     setMonsterImageError('')
     try {
@@ -1115,7 +1336,8 @@ export default function SpielleiterPage() {
       return char
     })
     setCharacters(updated)
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [characterId] })
   }
 
   const addItemToCharacter = (characterId: string, item: { name: string; description?: string; quantity?: number }) => {
@@ -1135,7 +1357,8 @@ export default function SpielleiterPage() {
       return char
     })
     setCharacters(updated)
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [characterId] })
   }
 
   const handleForceRefresh = async () => {
@@ -1478,7 +1701,8 @@ export default function SpielleiterPage() {
                               c.id === char.id ? { ...c, copperCoins: next } : c
                             )
                             setCharacters(updated)
-                            saveCharacters(updated)
+                            markSaving()
+                            saveCharacters(updated, { touchedIds: [char.id] })
                           }}
                           className="w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
                           placeholder="Kupfer"
@@ -4115,6 +4339,137 @@ export default function SpielleiterPage() {
                 </div>
               </div>
             )}
+
+            {/* Backup-Verwaltung */}
+            {groupId && (
+              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-xl">
+                <h2 className="text-2xl font-bold text-white mb-4">Backup-Verwaltung</h2>
+                <p className="text-white/70 mb-4">
+                  Erstelle SQLite-Snapshots der Gruppe und importiere Spieler als <span className="text-white">*_V2</span>.
+                </p>
+                <div className="flex flex-wrap gap-3 mb-4">
+                  <button
+                    onClick={handleCreateBackup}
+                    disabled={backupBusy}
+                    className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    {backupBusy ? 'Arbeite...' : 'Backup erstellen'}
+                  </button>
+                  <button
+                    onClick={fetchBackupList}
+                    disabled={backupBusy || backupLoading}
+                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 disabled:opacity-60 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    Liste aktualisieren
+                  </button>
+                </div>
+                {backupError && <p className="text-red-300 text-sm mb-2">{backupError}</p>}
+                {backupStatus && <p className="text-green-300 text-sm mb-2">{backupStatus}</p>}
+                <div className="space-y-2">
+                  {backupLoading && <p className="text-white/60">Backups werden geladen...</p>}
+                  {!backupLoading && backupFiles.length === 0 && (
+                    <p className="text-white/60">Noch keine Backups vorhanden.</p>
+                  )}
+                  {backupFiles.map((file) => {
+                    const isSelected = selectedBackupFile === file.name
+                    const displayDate = file.createdAt ? new Date(file.createdAt).toLocaleString('de-DE') : 'Unbekannt'
+                    return (
+                      <div
+                        key={file.name}
+                        className={`flex flex-col md:flex-row md:items-center gap-3 rounded-lg border px-4 py-3 ${
+                          isSelected ? 'border-primary-400 bg-white/10' : 'border-white/10 bg-white/5'
+                        }`}
+                      >
+                        <div className="flex-1 text-white">
+                          <div className="font-semibold">{file.name}</div>
+                          <div className="text-white/60 text-sm">
+                            {displayDate} • {formatBackupSize(file.size)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleLoadBackupPlayers(file.name)}
+                            disabled={backupBusy}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded text-sm"
+                          >
+                            Spieler laden
+                          </button>
+                          <button
+                            onClick={() => handleDownloadBackup(file.name)}
+                            disabled={backupBusy}
+                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-60 text-white rounded text-sm"
+                          >
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {selectedBackupFile && (
+                  <div className="mt-6 rounded-lg border border-white/10 bg-white/5 p-4">
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      Spieler aus Backup: {selectedBackupFile}
+                    </h3>
+                    <input
+                      value={backupSearch}
+                      onChange={(e) => setBackupSearch(e.target.value)}
+                      placeholder="Spieler oder Charakter suchen..."
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    />
+                    <div className="mt-3 space-y-2">
+                      {filteredBackupPlayers.length === 0 && (
+                        <p className="text-white/60">Keine Spieler gefunden.</p>
+                      )}
+                      {filteredBackupPlayers.map((player) => {
+                        const checked = selectedBackupPlayers.includes(player.playerName)
+                        return (
+                          <label
+                            key={player.playerName}
+                            className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...selectedBackupPlayers, player.playerName]
+                                  : selectedBackupPlayers.filter((name) => name !== player.playerName)
+                                setSelectedBackupPlayers(next)
+                              }}
+                              className="h-4 w-4"
+                            />
+                            <div>
+                              <div className="font-semibold">{player.playerName}</div>
+                              <div className="text-white/60 text-sm">
+                                {player.characterCount} Charakter{player.characterCount !== 1 ? 'e' : ''}
+                              </div>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        onClick={handleRestoreBackupPlayers}
+                        disabled={backupBusy || selectedBackupPlayers.length === 0}
+                        className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white rounded-lg font-semibold transition-all duration-300"
+                      >
+                        Ausgewählte Spieler importieren
+                      </button>
+                      <button
+                        onClick={() => setSelectedBackupPlayers(filteredBackupPlayers.map((p) => p.playerName))}
+                        disabled={backupBusy || filteredBackupPlayers.length === 0}
+                        className="px-5 py-2.5 bg-white/10 hover:bg-white/20 disabled:opacity-60 text-white rounded-lg font-semibold transition-all duration-300"
+                      >
+                        Alle auswählen
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h2 className="text-2xl font-bold text-white mb-4">Charaktererstellungs-Einstellungen</h2>
@@ -4412,12 +4767,14 @@ export default function SpielleiterPage() {
               // Aktualisiere bestehenden NPC
               const updated = characters.map(c => c.id === editingNpc.id ? npc : c)
               setCharacters(updated)
-              saveCharacters(updated)
+              markSaving()
+              saveCharacters(updated, { touchedIds: [editingNpc.id] })
             } else {
               // Neuer NPC
               const updated = [...characters, npc]
               setCharacters(updated)
-              saveCharacters(updated)
+              markSaving()
+              saveCharacters(updated, { touchedIds: [npc.id] })
             }
             setShowNpcCreation(false)
             setEditingNpc(null)

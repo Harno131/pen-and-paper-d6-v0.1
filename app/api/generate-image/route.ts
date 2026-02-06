@@ -44,6 +44,18 @@ const buildPrompt = (payload: GenerateImageRequest): string => {
 
 const IMAGE_DIR = path.join(process.cwd(), 'public', 'images')
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 const ensureDirectoryExists = (dirPath: string) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true })
@@ -124,26 +136,53 @@ export async function POST(request: Request) {
 
     // 2. Pollinations URL generieren (Kostenlos & ohne Key-Probleme)
     const seed = Math.floor(Math.random() * 999999)
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(optimizedPrompt)}?width=768&height=432&model=flux&seed=${seed}&nologo=true`
+    const encodedPrompt = encodeURIComponent(optimizedPrompt)
+    const candidates = [
+      `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=432&model=flux&seed=${seed}&nologo=true`,
+      `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=432&model=flux&seed=${seed}&nologo=true&format=png`,
+      `https://image.pollinations.ai/prompt/${encodedPrompt}.png?width=768&height=432&model=flux&seed=${seed}&nologo=true`,
+    ]
 
-    const imageResponse = await fetch(imageUrl)
-    if (!imageResponse.ok) {
-      const errorText = await imageResponse.text()
-      return NextResponse.json(
-        { error: 'Bild konnte nicht geladen werden.', details: errorText || imageResponse.statusText },
-        { status: 500, headers: { 'Cache-Control': 'no-store' } }
-      )
+    let imageBuffer: Buffer | null = null
+    let contentType = ''
+    let lastErrorText = ''
+    for (const url of candidates) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetchWithTimeout(
+            url,
+            { cache: 'no-store', headers: { Accept: 'image/*' } },
+            15000
+          )
+          if (!response.ok) {
+            const errorText = await response.text()
+            lastErrorText = `${response.status} ${response.statusText}: ${errorText}`.slice(0, 2000)
+            await delay(400)
+            continue
+          }
+          contentType = response.headers.get('content-type') || ''
+          const buffer = Buffer.from(await response.arrayBuffer())
+          if (!contentType.startsWith('image/') || buffer.length < 10_000) {
+            const fallbackText = buffer.toString('utf-8')
+            lastErrorText = `Unerwartete Antwort (${contentType || 'unknown'}), size=${buffer.length}. ${fallbackText.slice(0, 500)}`
+            await delay(400)
+            continue
+          }
+          imageBuffer = buffer
+          break
+        } catch (error: any) {
+          lastErrorText = `Bilddienst nicht erreichbar: ${error?.message || 'Unbekannter Fehler'}`
+          await delay(400)
+        }
+      }
+      if (imageBuffer) break
     }
 
-    const contentType = imageResponse.headers.get('content-type') || ''
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
-    if (!contentType.startsWith('image/') || imageBuffer.length < 10_000) {
-      const fallbackText = imageBuffer.toString('utf-8')
+    if (!imageBuffer) {
       return NextResponse.json(
         {
           error: 'Bild konnte nicht korrekt geladen werden.',
-          details: `Unerwartete Antwort (${contentType || 'unknown'}), size=${imageBuffer.length}`,
-          raw: fallbackText.slice(0, 1000),
+          details: lastErrorText || 'Keine Antwort von Bilddienst.',
         },
         { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )

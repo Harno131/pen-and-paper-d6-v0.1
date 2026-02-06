@@ -235,6 +235,8 @@ export default function SpielerPage() {
   const isUserEditingRef = useRef(false)
   const lastInputAtRef = useRef(0)
   const syncIndicatorTimeoutRef = useRef<number | null>(null)
+  const isSavingRef = useRef(false)
+  const saveCooldownRef = useRef<number | null>(null)
   const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
 
   const matchesTag = (tags: string[] | undefined, filter: string): boolean => {
@@ -250,6 +252,25 @@ export default function SpielerPage() {
     ? newJournalEntry.content.trim().split(/\s+/).length
     : 0
   const canGenerateJournalIllustration = journalWordCount >= 50 && !journalIllustrationUrl
+
+  const markSaving = useCallback((cooldownMs = 1500) => {
+    if (typeof window === 'undefined') return
+    isSavingRef.current = true
+    if (saveCooldownRef.current) {
+      window.clearTimeout(saveCooldownRef.current)
+    }
+    saveCooldownRef.current = window.setTimeout(() => {
+      isSavingRef.current = false
+    }, cooldownMs)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (saveCooldownRef.current) {
+        window.clearTimeout(saveCooldownRef.current)
+      }
+    }
+  }, [])
 
   const validateGroupAccess = useCallback(async (groupId: string, playerName: string, role: string) => {
     const { validateGroupMembership } = await import('@/lib/supabase-data')
@@ -447,7 +468,8 @@ export default function SpielerPage() {
         inventory: [...(char.inventory || []), inventoryItem],
       }
     })
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
     loadData()
   }
 
@@ -566,6 +588,7 @@ export default function SpielerPage() {
         || activeEl instanceof HTMLSelectElement
         || (activeEl instanceof HTMLElement && activeEl.isContentEditable)
       if (Date.now() - lastInputAtRef.current < 1500) return
+      if (isSavingRef.current) return
       if (isUserEditingRef.current || isEditingElement || showCharacterCreation) return
       loadData()
     }, 5000) // Alle 5 Sekunden
@@ -586,6 +609,7 @@ export default function SpielerPage() {
     const handleRealtimeChange = () => {
       if (showCharacterCreation) return
       if (isUserEditingRef.current) return
+      if (isSavingRef.current) return
       loadData()
       setShowSyncIndicator(true)
       if (syncIndicatorTimeoutRef.current) {
@@ -726,7 +750,8 @@ export default function SpielerPage() {
       }
       return char
     })
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
     setSelectedCharacter({ ...selectedCharacter, alignment: { row, col } })
     loadData()
   }
@@ -757,7 +782,8 @@ export default function SpielerPage() {
       }
       return char
     })
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
     loadData()
   }
 
@@ -770,7 +796,8 @@ export default function SpielerPage() {
       }
       return char
     })
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
     setSelectedCharacter({ ...selectedCharacter, inventory: nextInventory })
     loadData()
   }
@@ -842,7 +869,8 @@ export default function SpielerPage() {
       }
       return char
     })
-    saveCharacters(updated)
+    markSaving()
+    saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
     loadData()
   }
 
@@ -1237,7 +1265,8 @@ export default function SpielerPage() {
                         }
                         return char
                       })
-                      saveCharacters(updated)
+                      markSaving()
+                      saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
                       loadData()
                     }}
                     className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
@@ -1259,7 +1288,8 @@ export default function SpielerPage() {
                         }
                         return char
                       })
-                      saveCharacters(updated)
+                      markSaving()
+                      saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
                       loadData()
                     }}
                     className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
@@ -1289,7 +1319,8 @@ export default function SpielerPage() {
                               }
                               return char
                             })
-                            saveCharacters(updated)
+                            markSaving()
+                            saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
                             loadData()
                           }}
                           className="ml-2 text-red-400 hover:text-red-300 text-sm"
@@ -1317,7 +1348,8 @@ export default function SpielerPage() {
                         }
                         return char
                       })
-                      saveCharacters(updated)
+                      markSaving()
+                      saveCharacters(updated, { touchedIds: [selectedCharacter.id] })
                       e.currentTarget.value = ''
                       loadData()
                     }
