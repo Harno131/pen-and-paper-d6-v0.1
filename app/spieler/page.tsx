@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Character, JournalEntry, SharedImage, Item, EquipmentSlot, Skill, ShopItem } from '@/types'
 import { 
@@ -22,7 +22,7 @@ import {
 import { getGroupSettings, getInjuryTemplates, getCharacterInjuries } from '@/lib/supabase-data'
 import { getSupabaseDiagnostics } from '@/lib/supabase-debug'
 import { createSupabaseClient } from '@/lib/supabase'
-import { calculateSkillValue } from '@/lib/skills'
+import { calculateSkillValue, DEFAULT_COMBAT_SKILL_NAMES } from '@/lib/skills'
 import { d6ToBlips, formatD6Value, parseD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, TIMES_OF_DAY, getSpecialEvent, getMonthInfo } from '@/lib/fantasy-calendar'
 import { formatCopper, formatCurrency } from '@/lib/money'
@@ -218,7 +218,10 @@ export default function SpielerPage() {
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
   const [journalSortOrder, setJournalSortOrder] = useState<'desc' | 'asc'>('desc')
   const [showSkillOptions, setShowSkillOptions] = useState(false)
-  const [sortSkillsByBlips, setSortSkillsByBlips] = useState(false)
+  const [sortSkillsByBlips, setSortSkillsByBlips] = useState(true)
+  const [showMainAttributes, setShowMainAttributes] = useState(true)
+  const [onlyUpgradedSkills, setOnlyUpgradedSkills] = useState(false)
+  const [onlyCombatSkills, setOnlyCombatSkills] = useState(false)
   const [showPossibleSpecializations, setShowPossibleSpecializations] = useState(false)
   const [rulebookSpecializations, setRulebookSpecializations] = useState<any[]>([])
   const [shopItems, setShopItems] = useState<ShopItem[]>([])
@@ -235,6 +238,13 @@ export default function SpielerPage() {
     startDate?: { year: number; month: number; day: number }
     realStartDate?: string
   } | null>(null)
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
+  const [combatSkillNames, setCombatSkillNames] = useState<string[]>(DEFAULT_COMBAT_SKILL_NAMES)
+  const [preset1Keys, setPreset1Keys] = useState<string[]>([])
+  const [preset2Keys, setPreset2Keys] = useState<string[]>([])
+  const [activeSkillPreset, setActiveSkillPreset] = useState<1 | 2 | null>(null)
+  const [editingPreset, setEditingPreset] = useState<1 | 2 | null>(null)
+  const [presetDraftKeys, setPresetDraftKeys] = useState<string[]>([])
   const isUserEditingRef = useRef(false)
   const lastInputAtRef = useRef(0)
   const syncIndicatorTimeoutRef = useRef<number | null>(null)
@@ -247,6 +257,256 @@ export default function SpielerPage() {
     return (tags || []).some(tag => normalizeTag(tag) === filter)
   }
   const normalizedJournalTagFilter = normalizeTag(journalTagFilter)
+  const normalizedCombatSkillNames = useMemo(() => {
+    return new Set(combatSkillNames.map((name) => normalizeSkillKey(name)))
+  }, [combatSkillNames])
+  const getPresetStorageKey = (name: string, preset: 1 | 2) =>
+    `skillPreset:${normalizeSkillKey(name || 'spieler')}:${preset}`
+  const loadPresetFromStorage = (name: string, preset: 1 | 2): string[] => {
+    if (typeof window === 'undefined') return []
+    const raw = localStorage.getItem(getPresetStorageKey(name, preset))
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  const savePresetToStorage = (name: string, preset: 1 | 2, keys: string[]) => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(getPresetStorageKey(name, preset), JSON.stringify(keys))
+  }
+  const getSkillUpgradeBlips = (skill: Skill): number => {
+    const baseSteps = Math.max(0, (skill.bonusDice || 0) * 3 + (skill.bonusSteps || 0))
+    const skillCost = calculateStepCost(baseSteps)
+    const specCost = (skill.specializations || []).reduce((sum, spec) => {
+      return sum + calculateStepCost(Math.max(0, spec.blibs || 0))
+    }, 0)
+    return skillCost + specCost
+  }
+  const hasSkillUpgrades = (skill: Skill): boolean => {
+    if (skill.bonusDice > 0) return true
+    if ((skill.bonusSteps || 0) > 0) return true
+    return (skill.specializations || []).some((spec) => (spec.blibs || 0) > 0)
+  }
+  const isCombatSkill = (skill: Skill): boolean => {
+    if (skill.attribute === 'Magie') return true
+    return normalizedCombatSkillNames.has(normalizeSkillKey(skill.name))
+  }
+  const openPresetEditor = (preset: 1 | 2) => {
+    const existing = preset === 1 ? preset1Keys : preset2Keys
+    setEditingPreset(preset)
+    setPresetDraftKeys(existing)
+  }
+  const savePresetDraft = () => {
+    if (!editingPreset) return
+    const cleaned = Array.from(new Set(presetDraftKeys))
+    if (editingPreset === 1) {
+      setPreset1Keys(cleaned)
+    } else {
+      setPreset2Keys(cleaned)
+    }
+    savePresetToStorage(playerName, editingPreset, cleaned)
+    setEditingPreset(null)
+  }
+  const togglePresetDisplay = (preset: 1 | 2) => {
+    setActiveSkillPreset((current) => (current === preset ? null : preset))
+  }
+  const renderSkillsByAttribute = () => {
+    if (!selectedCharacter) return null
+    const skillSource = availableSkills.length > 0 ? availableSkills : selectedCharacter.skills
+    const activePresetKeys = activeSkillPreset === 1 ? preset1Keys : activeSkillPreset === 2 ? preset2Keys : []
+    const activePresetSet = activeSkillPreset ? new Set(activePresetKeys) : null
+    const characterSkillsByKey = new Map(
+      selectedCharacter.skills.map((skill) => [getSkillMapKey(skill.name, skill.attribute), skill])
+    )
+    const attributeSpend = new Map<string, number>()
+    selectedCharacter.skills.forEach((skill) => {
+      const current = attributeSpend.get(skill.attribute) || 0
+      attributeSpend.set(skill.attribute, current + getSkillUpgradeBlips(skill))
+    })
+
+    return Object.keys(selectedCharacter.attributes)
+      .sort((a, b) => {
+        if (!sortSkillsByBlips) return a.localeCompare(b, 'de')
+        const aCost = attributeSpend.get(a) || 0
+        const bCost = attributeSpend.get(b) || 0
+        if (bCost !== aCost) return bCost - aCost
+        return a.localeCompare(b, 'de')
+      })
+      .map((attribute) => {
+        const skillsForAttribute = skillSource
+          .filter((skill) => skill.attribute === attribute)
+          .map((skill) => {
+            const key = getSkillMapKey(skill.name, skill.attribute)
+            const owned = characterSkillsByKey.get(key)
+            if (owned) {
+              return {
+                ...skill,
+                ...owned,
+                description: skill.description || owned.description,
+                isWeakened: skill.isWeakened ?? owned.isWeakened,
+              }
+            }
+            return {
+              ...skill,
+              bonusDice: 0,
+              bonusSteps: 0,
+              specializations: [],
+            }
+          })
+          .filter((skill) => {
+            if (onlyUpgradedSkills && !hasSkillUpgrades(skill)) return false
+            if (onlyCombatSkills && !isCombatSkill(skill)) return false
+            if (activePresetSet && !activePresetSet.has(getSkillMapKey(skill.name, skill.attribute))) return false
+            return true
+          })
+
+        if (skillsForAttribute.length === 0) return null
+
+        const attributeValue = selectedCharacter.attributes[attribute] || '1D'
+        const attributeCost = getAttributeCost(attribute, attributeValue)
+        const attributeSpendBlips = attributeSpend.get(attribute) || 0
+
+        return (
+          <div key={attribute} className="bg-white/5 rounded-lg p-4 border border-white/10">
+            <h3 className="text-xl font-bold text-white mb-3">
+              {attribute} ({formatD6Value(attributeValue)})
+              <span className="ml-2 text-sky-300 text-sm font-semibold">
+                {attributeSpendBlips} Blibs
+              </span>
+              <span className="ml-2 text-white/40 text-xs">({attributeCost} Attribut-Blibs)</span>
+            </h3>
+            <div className="space-y-2">
+              {skillsForAttribute.map((skill) => {
+                const isLearned = hasSkillUpgrades(skill)
+                const equipmentBonus = getEquipmentSkillBonus(selectedCharacter, skill.name)
+                const injuryPenalty = getInjurySkillPenalty(selectedCharacter, skill.name)
+                const baseSkillFormula = calculateSkillValue(
+                  attributeValue,
+                  skill.bonusDice,
+                  skill.bonusSteps || 0,
+                  skill.isWeakened,
+                  isLearned
+                )
+                const totalBlips =
+                  d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
+                const finalSkillFormula = formatD6Value(totalBlips)
+
+                const existingSpecs = (skill.specializations || []).filter((spec) =>
+                  showPossibleSpecializations ? true : spec.blibs > 0
+                )
+                const suggestionSpecs = rulebookSpecializations
+                  .filter((spec) => normalizeSkillKey(spec.skill_name) === normalizeSkillKey(skill.name))
+                  .filter((spec) =>
+                    !existingSpecs.some((existing) =>
+                      normalizeSkillKey(existing.name) === normalizeSkillKey(spec.specialization_name)
+                    )
+                  )
+
+                return (
+                  <div key={skill.id} className="space-y-2">
+                    <button
+                      onClick={() => setSelectedSkillForRoll({ skill })}
+                      className="w-full text-left bg-white/10 hover:bg-white/20 rounded-lg p-4 border border-white/20 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold text-white text-lg">
+                            {parseSkillName(skill.name)}
+                          </div>
+                          <div className="text-white/70 text-sm mt-1">
+                            <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
+                              {finalSkillFormula}
+                            </span>
+                            {equipmentBonus > 0 && (
+                              <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
+                            )}
+                            {injuryPenalty > 0 && (
+                              <span className="text-red-300 ml-2">-{injuryPenalty}</span>
+                            )}
+                            {skill.isWeakened && !isLearned && (
+                              <span className="text-yellow-400 ml-2">(geschwächt)</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-2xl">🎲</div>
+                      </div>
+                    </button>
+
+                    {(existingSpecs.length > 0 || (showPossibleSpecializations && suggestionSpecs.length > 0)) && (
+                      <div className="ml-6 space-y-2">
+                        {existingSpecs.map((spec) => {
+                          const specBlibs = spec.blibs
+                          const baseSpecFormula = calculateSkillValue(
+                            attributeValue,
+                            skill.bonusDice,
+                            specBlibs,
+                            skill.isWeakened,
+                            isLearned
+                          )
+                          const specTotalBlips =
+                            d6ToBlips(baseSpecFormula) + equipmentBonus - injuryPenalty
+                          const finalSpecFormula = formatD6Value(specTotalBlips)
+                          return (
+                            <button
+                              key={spec.id}
+                              onClick={() => setSelectedSkillForRoll({ skill, specialization: spec })}
+                              className="w-full text-left bg-white/5 hover:bg-white/15 rounded-lg p-3 border border-white/10 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="font-semibold text-white">
+                                    {spec.name}
+                                  </div>
+                                  <div className="text-white/70 text-sm mt-1">
+                                    <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
+                                      {finalSpecFormula}
+                                    </span>
+                                    {specBlibs > 0 && (
+                                      <span className="text-yellow-400 ml-2">
+                                        ({specBlibs} Blibs)
+                                      </span>
+                                    )}
+                                    {equipmentBonus > 0 && (
+                                      <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
+                                    )}
+                                    {injuryPenalty > 0 && (
+                                      <span className="text-red-300 ml-2">-{injuryPenalty}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-xl">🎲</div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                        {showPossibleSpecializations && suggestionSpecs.map((spec) => (
+                          <div
+                            key={`suggested-${spec.specialization_name}`}
+                            className="w-full text-left bg-white/5 rounded-lg p-3 border border-white/10 opacity-80"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-semibold text-white/80">{spec.specialization_name}</div>
+                                <div className="text-white/60 text-sm mt-1">
+                                  Vorschlag aus Rule-Book
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })
+  }
   const matchesJournalCategory = (entry: JournalEntry): boolean => {
     if (journalCategory === 'all') return true
     return matchesTag(entry.tags, journalCategory)
@@ -328,6 +588,12 @@ export default function SpielerPage() {
       setShopItems(shopItems.length > 0 ? shopItems : getDefaultShopItems())
 
       const groupSettings = await getGroupSettings(groupId)
+      const storedCombatSkills = groupSettings?.combatSkillNames
+      setCombatSkillNames(
+        Array.isArray(storedCombatSkills) && storedCombatSkills.length > 0
+          ? storedCombatSkills
+          : DEFAULT_COMBAT_SKILL_NAMES
+      )
       if (groupSettings?.fantasyCalendar) {
         setFantasyCalendarStart({
           startDate: groupSettings.fantasyCalendar.startDate,
@@ -352,37 +618,38 @@ export default function SpielerPage() {
         ...persistedDescriptions,
         ...localDescriptions,
       }
-      if (Object.keys(mergedDescriptions).length > 0) {
-        const mergedSkills: Skill[] = [...localSkills]
-        const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
-        rulebookSkills.forEach((skill) => {
-          const key = getSkillMapKey(skill.name, skill.attribute)
-          if (existingKeys.has(key)) return
-          mergedSkills.push({
-            id: `rulebook-${normalizeSkillKey(skill.attribute)}-${key}`,
-            name: skill.name,
-            attribute: skill.attribute,
-            bonusDice: 0,
-            bonusSteps: 0,
-            specializations: [],
-            isWeakened: false,
-            isCustom: false,
-            description: skill.description,
-          })
+      const mergedSkills: Skill[] = [...localSkills]
+      const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
+      rulebookSkills.forEach((skill) => {
+        const key = getSkillMapKey(skill.name, skill.attribute)
+        if (existingKeys.has(key)) return
+        mergedSkills.push({
+          id: `rulebook-${normalizeSkillKey(skill.attribute)}-${key}`,
+          name: skill.name,
+          attribute: skill.attribute,
+          bonusDice: 0,
+          bonusSteps: 0,
+          specializations: [],
+          isWeakened: false,
+          isCustom: false,
+          description: skill.description,
         })
-        const withDescriptions = mergedSkills.map((skill) => {
-          if (skill.description) return skill
-          const key = normalizeSkillKey(skill.name)
-          const desc = mergedDescriptions[key]
-          return desc ? { ...skill, description: desc } : skill
-        })
-        saveAvailableSkills(withDescriptions)
-      }
+      })
+      const withDescriptions = mergedSkills.map((skill) => {
+        if (skill.description) return skill
+        const key = normalizeSkillKey(skill.name)
+        const desc = mergedDescriptions[key]
+        return desc ? { ...skill, description: desc } : skill
+      })
+      saveAvailableSkills(withDescriptions)
+      setAvailableSkills(withDescriptions)
     } else {
       setInjuryTemplates([])
       setCharacterInjuries([])
       setRulebookSpecializations([])
       setShopItems([])
+      setAvailableSkills(getAvailableSkills())
+      setCombatSkillNames(DEFAULT_COMBAT_SKILL_NAMES)
     }
   }, [selectedCharacter, groupId])
 
@@ -401,6 +668,12 @@ export default function SpielerPage() {
     setPlayerName(name.trim())
     loadData()
   }, [router, validateGroupAccess, loadData])
+
+  useEffect(() => {
+    if (!playerName || typeof window === 'undefined') return
+    setPreset1Keys(loadPresetFromStorage(playerName, 1))
+    setPreset2Keys(loadPresetFromStorage(playerName, 2))
+  }, [playerName])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1605,12 +1878,76 @@ export default function SpielerPage() {
                   <label className="flex items-center gap-2 text-white/80 text-sm">
                     <input
                       type="checkbox"
+                      checked={showMainAttributes}
+                      onChange={(e) => setShowMainAttributes(e.target.checked)}
+                      className="rounded"
+                    />
+                    Hauptattribute anzeigen
+                  </label>
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
                       checked={sortSkillsByBlips}
                       onChange={(e) => setSortSkillsByBlips(e.target.checked)}
                       className="rounded"
                     />
                     Attribute nach Blibs sortieren
                   </label>
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={onlyUpgradedSkills}
+                      onChange={(e) => setOnlyUpgradedSkills(e.target.checked)}
+                      className="rounded"
+                    />
+                    Nur gesteigerte Fertigkeiten
+                  </label>
+                  <label className="flex items-center gap-2 text-white/80 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={onlyCombatSkills}
+                      onChange={(e) => setOnlyCombatSkills(e.target.checked)}
+                      className="rounded"
+                    />
+                    Nur Kampf-Fertigkeiten
+                  </label>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <button
+                      onClick={() => togglePresetDisplay(1)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                        activeSkillPreset === 1
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                    >
+                      {activeSkillPreset === 1 ? 'Default 1 ausblenden' : 'Default 1 anzeigen'}
+                    </button>
+                    <button
+                      onClick={() => togglePresetDisplay(2)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                        activeSkillPreset === 2
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                    >
+                      {activeSkillPreset === 2 ? 'Default 2 ausblenden' : 'Default 2 anzeigen'}
+                    </button>
+                    <button
+                      onClick={() => openPresetEditor(1)}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
+                    >
+                      Default 1 erstellen
+                    </button>
+                    <button
+                      onClick={() => openPresetEditor(2)}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
+                    >
+                      Default 2 erstellen
+                    </button>
+                  </div>
+                  <div className="text-white/50 text-xs">
+                    Default 1: {preset1Keys.length} • Default 2: {preset2Keys.length}
+                  </div>
                   <label className="flex items-center gap-2 text-white/80 text-sm">
                     <input
                       type="checkbox"
@@ -1623,164 +1960,105 @@ export default function SpielerPage() {
                 </div>
               )}
 
+              {editingPreset && (
+                <div className="mb-6 rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h3 className="text-lg font-semibold text-white">
+                      Default {editingPreset} auswählen
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => {
+                          const source = availableSkills.length > 0 ? availableSkills : selectedCharacter.skills
+                          const allKeys = source.map((skill) => getSkillMapKey(skill.name, skill.attribute))
+                          setPresetDraftKeys(Array.from(new Set(allKeys)))
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
+                      >
+                        Alle wählen
+                      </button>
+                      <button
+                        onClick={() => setPresetDraftKeys([])}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
+                      >
+                        Alle löschen
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-3 max-h-[360px] overflow-y-auto pr-2">
+                    {(['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'] as const).map((attr) => {
+                      const source = availableSkills.length > 0 ? availableSkills : selectedCharacter.skills
+                      const skillsForAttr = source.filter((skill) => skill.attribute === attr)
+                      if (skillsForAttr.length === 0) return null
+                      return (
+                        <div key={attr} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <h4 className="text-white font-semibold mb-2">{attr}</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {skillsForAttr.map((skill) => {
+                              const key = getSkillMapKey(skill.name, skill.attribute)
+                              const checked = presetDraftKeys.includes(key)
+                              return (
+                                <label key={key} className="flex items-center gap-2 text-white/80 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setPresetDraftKeys((prev) => [...prev, key])
+                                      } else {
+                                        setPresetDraftKeys((prev) => prev.filter((item) => item !== key))
+                                      }
+                                    }}
+                                    className="rounded"
+                                  />
+                                  {skill.name}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      onClick={savePresetDraft}
+                      className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-all duration-300"
+                    >
+                      Default speichern
+                    </button>
+                    <button
+                      onClick={() => setEditingPreset(null)}
+                      className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-all duration-300"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {showMainAttributes && (
+                <div className="mb-6 rounded-lg border border-white/10 bg-white/5 p-4">
+                  <h3 className="text-lg font-semibold text-white mb-3">Hauptattribute</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {Object.keys(selectedCharacter.attributes)
+                      .sort((a, b) => a.localeCompare(b, 'de'))
+                      .map((attribute) => {
+                        const attributeValue = selectedCharacter.attributes[attribute] || '1D'
+                        return (
+                          <div key={attribute} className="flex items-center justify-between bg-white/10 rounded-md px-3 py-2">
+                            <span className="text-white/80">{attribute}</span>
+                            <span className="text-white font-semibold">{formatD6Value(attributeValue)}</span>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
+
               {/* Alle Fertigkeiten gruppiert nach Attribut */}
               <div className="space-y-6">
-                {Object.keys(selectedCharacter.attributes)
-                  .sort((a, b) => {
-                    if (!sortSkillsByBlips) return 0
-                    const aCost = getAttributeCost(a, selectedCharacter.attributes[a] || '1D')
-                    const bCost = getAttributeCost(b, selectedCharacter.attributes[b] || '1D')
-                    if (bCost !== aCost) return bCost - aCost
-                    return a.localeCompare(b, 'de')
-                  })
-                  .map((attribute) => {
-                  const skillsForAttribute = selectedCharacter.skills.filter(
-                    skill => skill.attribute === attribute
-                  )
-                  
-                  if (skillsForAttribute.length === 0) return null
-
-                  const attributeValue = selectedCharacter.attributes[attribute] || '1D'
-                  const attributeCost = getAttributeCost(attribute, attributeValue)
-
-                  return (
-                    <div key={attribute} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                      <h3 className="text-xl font-bold text-white mb-3">
-                        {attribute} ({formatD6Value(attributeValue)})
-                        <span className="ml-2 text-sky-300 text-sm font-semibold">({attributeCost} Blibs)</span>
-                      </h3>
-                      <div className="space-y-2">
-                        {skillsForAttribute.map((skill) => {
-                          const isLearned = skill.bonusDice > 0 || (skill.specializations && skill.specializations.some(s => s.blibs > 0))
-                          const equipmentBonus = getEquipmentSkillBonus(selectedCharacter, skill.name)
-                          const injuryPenalty = getInjurySkillPenalty(selectedCharacter, skill.name)
-                          const baseSkillFormula = calculateSkillValue(
-                            attributeValue,
-                            skill.bonusDice,
-                            skill.bonusSteps || 0,
-                            skill.isWeakened,
-                            isLearned
-                          )
-                          const totalBlips =
-                            d6ToBlips(baseSkillFormula) + equipmentBonus - injuryPenalty
-                          const finalSkillFormula = formatD6Value(totalBlips)
-
-                          const existingSpecs = (skill.specializations || []).filter((spec) =>
-                            showPossibleSpecializations ? true : spec.blibs > 0
-                          )
-                          const suggestionSpecs = rulebookSpecializations
-                            .filter((spec) => normalizeSkillKey(spec.skill_name) === normalizeSkillKey(skill.name))
-                            .filter((spec) =>
-                              !existingSpecs.some((existing) =>
-                                normalizeSkillKey(existing.name) === normalizeSkillKey(spec.specialization_name)
-                              )
-                            )
-
-                          return (
-                            <div key={skill.id} className="space-y-2">
-                              {/* Hauptfertigkeit */}
-                              <button
-                                onClick={() => setSelectedSkillForRoll({ skill })}
-                                className="w-full text-left bg-white/10 hover:bg-white/20 rounded-lg p-4 border border-white/20 transition-colors"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-semibold text-white text-lg">
-                                      {parseSkillName(skill.name)}
-                                    </div>
-                                    <div className="text-white/70 text-sm mt-1">
-                                      <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
-                                        {finalSkillFormula}
-                                      </span>
-                                      {equipmentBonus > 0 && (
-                                        <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
-                                      )}
-                                      {injuryPenalty > 0 && (
-                                        <span className="text-red-300 ml-2">-{injuryPenalty}</span>
-                                      )}
-                                      {skill.isWeakened && !isLearned && (
-                                        <span className="text-yellow-400 ml-2">(geschwächt)</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="text-2xl">🎲</div>
-                                </div>
-                              </button>
-
-                              {/* Spezialisierungen */}
-                              {(existingSpecs.length > 0 || (showPossibleSpecializations && suggestionSpecs.length > 0)) && (
-                                <div className="ml-6 space-y-2">
-                                  {existingSpecs.map((spec) => {
-                                    const specBlibs = spec.blibs
-                                    const baseSpecFormula = calculateSkillValue(
-                                      attributeValue,
-                                      skill.bonusDice,
-                                      specBlibs,
-                                      skill.isWeakened,
-                                      isLearned
-                                    )
-                                    const specTotalBlips =
-                                      d6ToBlips(baseSpecFormula) + equipmentBonus - injuryPenalty
-                                    const finalSpecFormula = formatD6Value(specTotalBlips)
-                                    return (
-                                      <button
-                                        key={spec.id}
-                                        onClick={() => setSelectedSkillForRoll({ skill, specialization: spec })}
-                                        className="w-full text-left bg-white/5 hover:bg-white/15 rounded-lg p-3 border border-white/10 transition-colors"
-                                      >
-                                        <div className="flex items-center justify-between">
-                                          <div>
-                                            <div className="font-semibold text-white">
-                                              {spec.name}
-                                            </div>
-                                            <div className="text-white/70 text-sm mt-1">
-                                              <span className={injuryPenalty > 0 ? 'text-red-300' : ''}>
-                                                {finalSpecFormula}
-                                              </span>
-                                              {specBlibs > 0 && (
-                                                <span className="text-yellow-400 ml-2">
-                                                  ({specBlibs} Blibs)
-                                                </span>
-                                              )}
-                                              {equipmentBonus > 0 && (
-                                                <span className="text-blue-300 ml-2">+{equipmentBonus}</span>
-                                              )}
-                                              {injuryPenalty > 0 && (
-                                                <span className="text-red-300 ml-2">-{injuryPenalty}</span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="text-xl">🎲</div>
-                                        </div>
-                                      </button>
-                                    )
-                                  })}
-                                  {showPossibleSpecializations && suggestionSpecs.map((spec) => (
-                                    <div
-                                      key={`suggested-${spec.specialization_name}`}
-                                      className="w-full text-left bg-white/5 rounded-lg p-3 border border-white/10 opacity-80"
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div>
-                                          <div className="font-semibold text-white">
-                                            {spec.specialization_name}
-                                          </div>
-                                          <div className="text-white/60 text-sm mt-1">
-                                            Vorschlag aus Rule-Book
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
+                {renderSkillsByAttribute()}
               </div>
             </div>
           </div>

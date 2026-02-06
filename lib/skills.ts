@@ -53,6 +53,19 @@ export const SKILLS_BY_ATTRIBUTE: { [attribute: string]: string[] } = {
   ],
 }
 
+export const DEFAULT_COMBAT_SKILL_NAMES = [
+  'Nahkampf',
+  'Fernkampf',
+  'Wucht',
+  'Präzision',
+  'Praezision',
+  'Präzisien',
+  'Ausweichen',
+  'Parieren',
+  'Blocken',
+  'Schaden-Resistenzen',
+]
+
 export function getAllSkills(): { attribute: string; name: string }[] {
   const allSkills: { attribute: string; name: string }[] = []
   

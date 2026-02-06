@@ -28,7 +28,7 @@ import {
 import { getGroupSettings, saveGroupSettings, getBestiary, upsertBestiary, removeBestiary, getInjuryTemplates, getCharacterInjuries, upsertCharacterInjury, removeCharacterInjury, getInventoryItems, saveInventoryItem, removeInventoryItem } from '@/lib/supabase-data'
 import DiceRoller from '@/components/DiceRoller'
 import AlignmentSelector from '@/components/AlignmentSelector'
-import { calculateSkillValue } from '@/lib/skills'
+import { calculateSkillValue, DEFAULT_COMBAT_SKILL_NAMES } from '@/lib/skills'
 import { d6ToBlips, formatD6Value, parseD6Value } from '@/lib/dice'
 import { realDateToFantasyDate, formatFantasyDate, getSpecialEvent, getWeekdayInfo, TIMES_OF_DAY, MONTHS, createFantasyDate, type FantasyDate } from '@/lib/fantasy-calendar'
 import { formatCopper, formatCurrency } from '@/lib/money'
@@ -154,6 +154,7 @@ export default function SpielleiterPage() {
   const [rewardSingleReason, setRewardSingleReason] = useState('')
   const [rewardCharacterId, setRewardCharacterId] = useState('')
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
+  const [combatSkillNames, setCombatSkillNames] = useState<string[]>(DEFAULT_COMBAT_SKILL_NAMES)
   const [newSkill, setNewSkill] = useState({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [skillRecoveryJson, setSkillRecoveryJson] = useState('')
@@ -841,6 +842,12 @@ export default function SpielleiterPage() {
       const groupSettings = await getGroupSettings(currentGroupId)
       const shopItems = await getInventoryItems(currentGroupId)
       setShopItems(shopItems.length > 0 ? shopItems : getDefaultShopItems())
+      const storedCombatSkills = groupSettings?.combatSkillNames
+      setCombatSkillNames(
+        Array.isArray(storedCombatSkills) && storedCombatSkills.length > 0
+          ? storedCombatSkills
+          : DEFAULT_COMBAT_SKILL_NAMES
+      )
       if (groupSettings?.fantasyCalendar) {
         setFantasyCalendarStart({
           startDate: groupSettings.fantasyCalendar.startDate,
@@ -896,6 +903,7 @@ export default function SpielleiterPage() {
       setAvailableSkills(localSkills)
       setRulebookSpecializations([])
       setShopItems([])
+      setCombatSkillNames(DEFAULT_COMBAT_SKILL_NAMES)
     }
   }, [groupId, settings])
 
@@ -4339,6 +4347,81 @@ export default function SpielleiterPage() {
                     className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-all duration-300"
                   >
                     Druckansicht öffnen
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Kampf-Fertigkeiten */}
+            {groupId && (
+              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 shadow-xl">
+                <h2 className="text-2xl font-bold text-white mb-4">Kampf-Fertigkeiten</h2>
+                <p className="text-white/70 mb-4">
+                  Diese Auswahl steuert die Kampf-Filterung bei Spielern. Magie-Fertigkeiten werden immer einbezogen.
+                </p>
+                {availableSkills.length === 0 ? (
+                  <p className="text-white/60">Keine Fertigkeiten geladen.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {['Reflexe', 'Koordination', 'Stärke', 'Wissen', 'Wahrnehmung', 'Ausstrahlung', 'Magie'].map((attr) => {
+                      const attrSkills = availableSkills.filter((skill) => skill.attribute === attr)
+                      if (attrSkills.length === 0) return null
+                      return (
+                        <div key={attr} className="rounded-lg border border-white/10 bg-white/5 p-4">
+                          <h3 className="text-lg font-semibold text-white mb-2">{attr}</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {attrSkills.map((skill) => {
+                              const checked = combatSkillNames.some(
+                                (name) => normalizeSkillKey(name) === normalizeSkillKey(skill.name)
+                              )
+                              return (
+                                <label key={skill.id} className="flex items-center gap-2 text-white/80 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      const next = e.target.checked
+                                        ? [...combatSkillNames, skill.name]
+                                        : combatSkillNames.filter(
+                                            (name) => normalizeSkillKey(name) !== normalizeSkillKey(skill.name)
+                                          )
+                                      setCombatSkillNames(next)
+                                    }}
+                                    className="rounded"
+                                  />
+                                  {skill.name}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    onClick={async () => {
+                      if (!groupId) return
+                      const current = await getGroupSettings(groupId)
+                      const nextSettings = {
+                        ...(current || settings),
+                        combatSkillNames,
+                      }
+                      const ok = await saveGroupSettings(groupId, nextSettings)
+                      if (!ok) {
+                        console.warn('Failed to save combat skill settings.')
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    Auswahl speichern
+                  </button>
+                  <button
+                    onClick={() => setCombatSkillNames(DEFAULT_COMBAT_SKILL_NAMES)}
+                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-all duration-300"
+                  >
+                    Standard laden
                   </button>
                 </div>
               </div>

@@ -244,6 +244,7 @@ export interface CharacterCreationSettings {
   fantasyCalendar?: FantasyCalendarSettings
   printNotes?: string
   skillDescriptions?: Record<string, string>
+  combatSkillNames?: string[]
 }
 
 export interface FantasyCalendarSettings {
