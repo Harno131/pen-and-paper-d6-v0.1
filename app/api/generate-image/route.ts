@@ -220,7 +220,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: 'Bild konnte nicht korrekt geladen werden.',
-          details: lastErrorText || 'HF_ACCESS_TOKEN fehlt für den Fallback.',
+          details: 'HF_ACCESS_TOKEN fehlt für den Fallback.',
         },
         { status: 500, headers: { 'Cache-Control': 'no-store' } }
       )
@@ -251,8 +251,18 @@ export async function POST(request: Request) {
       )
     }
 
-    const hfContentType = hfResponse.headers.get('content-type') || 'image/png'
+    const hfContentType = hfResponse.headers.get('content-type') || ''
     const hfBuffer = Buffer.from(await hfResponse.arrayBuffer())
+    if (!hfContentType.startsWith('image/') || hfBuffer.length < 10_000) {
+      const fallbackText = hfBuffer.toString('utf-8')
+      return NextResponse.json(
+        {
+          error: 'Bild konnte nicht korrekt geladen werden.',
+          details: `HF Antwort nicht als Bild erkannt (${hfContentType || 'unknown'}), size=${hfBuffer.length}. ${fallbackText.slice(0, 1000)}`,
+        },
+        { status: 500, headers: { 'Cache-Control': 'no-store' } }
+      )
+    }
     const base64 = hfBuffer.toString('base64')
     const dataUrl = `data:${hfContentType};base64,${base64}`
 
