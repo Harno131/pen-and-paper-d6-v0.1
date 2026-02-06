@@ -67,6 +67,52 @@ type BackupPlayer = {
   characters: { id: string; name: string }[]
 }
 
+const normalizeSkillKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+
+const getSkillMapKey = (name: string, attribute: string) =>
+  `${normalizeSkillKey(attribute)}::${normalizeSkillKey(name)}`
+
+const buildSkillDescriptionMap = (skills: Skill[]) => {
+  const map: Record<string, string> = {}
+  skills.forEach((skill) => {
+    const desc = (skill.description || '').trim()
+    if (!desc) return
+    map[normalizeSkillKey(skill.name)] = desc
+  })
+  return map
+}
+
+const mergeRulebookSkills = (
+  localSkills: Skill[],
+  rulebookSkills: Array<{ name: string; attribute: string; description: string }>
+) => {
+  const merged = [...localSkills]
+  const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
+  rulebookSkills.forEach((skill) => {
+    const key = getSkillMapKey(skill.name, skill.attribute)
+    if (existingKeys.has(key)) return
+    merged.push({
+      id: `rulebook-${normalizeSkillKey(skill.attribute)}-${normalizeSkillKey(skill.name)}`,
+      name: skill.name,
+      attribute: skill.attribute,
+      bonusDice: 0,
+      bonusSteps: 0,
+      specializations: [],
+      isWeakened: false,
+      isCustom: false,
+      description: skill.description,
+    })
+  })
+  return merged
+}
+
 export default function SpielleiterPage() {
   const MAX_SHARED_IMAGE_BYTES = 2 * 1024 * 1024
   const router = useRouter()
@@ -264,16 +310,6 @@ export default function SpielleiterPage() {
     }
   }
 
-  const normalizeSkillKey = (value: string) =>
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/ä/g, 'ae')
-      .replace(/ö/g, 'oe')
-      .replace(/ü/g, 'ue')
-      .replace(/ß/g, 'ss')
-  const getSkillMapKey = (name: string, attribute: string) =>
-    `${normalizeSkillKey(attribute)}::${normalizeSkillKey(name)}`
   const BASE_VALUES: Record<string, string> = {
     Reflexe: '2D',
     Koordination: '2D',
@@ -298,38 +334,6 @@ export default function SpielleiterPage() {
     const base = BASE_VALUES[attribute] || '2D'
     const steps = Math.max(0, getStepsFromD6(value) - getStepsFromD6(base))
     return calculateStepCost(steps)
-  }
-  const buildSkillDescriptionMap = (skills: Skill[]) => {
-    const map: Record<string, string> = {}
-    skills.forEach((skill) => {
-      const desc = (skill.description || '').trim()
-      if (!desc) return
-      map[normalizeSkillKey(skill.name)] = desc
-    })
-    return map
-  }
-  const mergeRulebookSkills = (
-    localSkills: Skill[],
-    rulebookSkills: Array<{ name: string; attribute: string; description: string }>
-  ) => {
-    const merged = [...localSkills]
-    const existingKeys = new Set(localSkills.map((skill) => getSkillMapKey(skill.name, skill.attribute)))
-    rulebookSkills.forEach((skill) => {
-      const key = getSkillMapKey(skill.name, skill.attribute)
-      if (existingKeys.has(key)) return
-      merged.push({
-        id: `rulebook-${normalizeSkillKey(skill.attribute)}-${normalizeSkillKey(skill.name)}`,
-        name: skill.name,
-        attribute: skill.attribute,
-        bonusDice: 0,
-        bonusSteps: 0,
-        specializations: [],
-        isWeakened: false,
-        isCustom: false,
-        description: skill.description,
-      })
-    })
-    return merged
   }
   const getEquipmentSkillBonus = (character: Character, skillName: string): number => {
     const target = normalizeSkillKey(skillName)
@@ -893,7 +897,7 @@ export default function SpielleiterPage() {
       setRulebookSpecializations([])
       setShopItems([])
     }
-  }, [groupId])
+  }, [groupId, settings])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

@@ -36,6 +36,28 @@ import { getRulebookSkills, getRulebookSpecializations } from '@/lib/rulebook'
 import { getInventoryItems, saveInventoryItem } from '@/lib/supabase-data'
 import { getDefaultShopItems } from '@/lib/shop'
 
+const normalizeSkillKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+
+const getSkillMapKey = (name: string, attribute: string) =>
+  `${normalizeSkillKey(attribute)}::${normalizeSkillKey(name)}`
+
+const buildSkillDescriptionMap = (skills: Skill[]) => {
+  const map: Record<string, string> = {}
+  skills.forEach((skill) => {
+    const desc = (skill.description || '').trim()
+    if (!desc) return
+    map[normalizeSkillKey(skill.name)] = desc
+  })
+  return map
+}
+
 export default function SpielerPage() {
   const parseSkillName = (name: string) => {
     const trimmed = name.trim()
@@ -76,23 +98,6 @@ export default function SpielerPage() {
     { id: 'feet', col: 3, row: 6 },
   ]
 
-  const normalizeSkillKey = (value: string) =>
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/ä/g, 'ae')
-      .replace(/ö/g, 'oe')
-      .replace(/ü/g, 'ue')
-      .replace(/ß/g, 'ss')
-  const buildSkillDescriptionMap = (skills: { name: string; description?: string }[]) => {
-    const map: Record<string, string> = {}
-    skills.forEach((skill) => {
-      const desc = (skill.description || '').trim()
-      if (!desc) return
-      map[normalizeSkillKey(skill.name)] = desc
-    })
-    return map
-  }
   const BASE_VALUES: Record<string, string> = {
     Reflexe: '2D',
     Koordination: '2D',
@@ -118,8 +123,6 @@ export default function SpielerPage() {
     const steps = Math.max(0, getStepsFromD6(value) - getStepsFromD6(base))
     return calculateStepCost(steps)
   }
-  const getSkillMapKey = (name: string, attribute: string) =>
-    `${normalizeSkillKey(attribute)}::${normalizeSkillKey(name)}`
   const [customSlots, setCustomSlots] = useState<{ id: EquipmentSlot; label: string }[]>([])
   const [newSlotId, setNewSlotId] = useState('')
   const [newSlotLabel, setNewSlotLabel] = useState('')
