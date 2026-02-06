@@ -117,11 +117,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'GEMINI_API_KEY fehlt.' }, { status: 500 })
     }
 
-    // 1. Gemini als Übersetzer & Prompt-Optimierer nutzen
+    // 1. Gemini als "Regisseur" für den perfekten Fallcrest-Prompt
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel(
-		{ model: "gemini-2.5-flash" }, 
-	);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     const rawPrompt =
       typeof body.promptOverride === 'string' && body.promptOverride.trim()
@@ -131,17 +129,12 @@ export async function POST(request: Request) {
           : buildPrompt(body)
     const geminiInstruction = `
       Act as an expert AI image prompter for the world of 'Fallcrest'.
-      Your task is to transform the provided character data into a highly detailed, atmospheric English image prompt.
+      Transform these character/event details into a highly detailed, atmospheric English image prompt: "${rawPrompt}".
 
-      Follow these strict rules for the composition:
-      - Style: Dark Fantasy Oil Painting, 'Fallcrest' aesthetic (mystical, foggy, dramatic shadows, moody atmosphere).
-      - Textures: Describe physical details vividly (e.g., 'notched iron', 'weathered leather', 'tattered cloth', 'damp skin').
-      - Lighting: Use 'Chiaroscuro' lighting (extreme contrast between light and shadow).
-      - Background: Seamlessly integrate the setting into the scene.
-
-      Input Data: "${rawPrompt}"
-
-      Output ONLY the final English prompt text. No commentary, no introduction.
+      Rules:
+      - Style: Dark Fantasy Oil Painting, 'Fallcrest' aesthetic (mystical, foggy, dramatic shadows).
+      - Details: Focus on weathered gear, realistic textures, and moody lighting (Chiaroscuro).
+      - Output: ONLY the final English prompt text. No introduction.
     `;
     
     const result = await model.generateContent(geminiInstruction)
@@ -227,7 +220,7 @@ export async function POST(request: Request) {
     }
 
     const hfResponse = await fetchWithTimeout(
-      'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+      'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell',
       {
         method: 'POST',
         headers: {
