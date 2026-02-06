@@ -29,8 +29,8 @@ const emitStorageError = () => {
   window.dispatchEvent(new CustomEvent('storage-error', { detail: lastStorageError }))
 }
 
-const reportRemoteSaveFailure = (message: string) => {
-  lastStorageError = message
+const reportRemoteSaveFailure = () => {
+  lastStorageError = 'Es gibt eine Sicherheits-Kopie dieses Characters!'
   emitStorageError()
 }
 
@@ -118,12 +118,12 @@ export const saveCharacters = (characters: Character[], options?: SaveCharacters
         saveCharacterToSupabase(groupId, char)
           .then((ok) => {
             if (!ok) {
-              reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Es existiert vermutlich eine neuere Version.')
+              reportRemoteSaveFailure()
             }
           })
           .catch(err => {
             console.warn('Failed to save to Supabase:', err)
-            reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Bitte Verbindung prüfen.')
+            reportRemoteSaveFailure()
           })
       })
     }
@@ -171,6 +171,28 @@ export const getCharactersAsync = async (): Promise<Character[]> => {
       }
       return merged
     }
+    const localCharacters = getCharacters()
+    if (localCharacters.length > 0) {
+      const now = new Date()
+      const stamped = localCharacters.map((char) => ({
+        ...char,
+        updatedAt: char.updatedAt || now,
+      }))
+      await Promise.all(
+        stamped.map((char) =>
+          saveCharacterToSupabase(groupId, char).catch((err) => {
+            console.warn('Fehler beim initialen Sync zu Supabase:', err)
+          })
+        )
+      )
+      safeSetItem('characters', JSON.stringify(stamped))
+      if (isFileStorageEnabled()) {
+        await saveCharactersToFile(groupId, stamped).catch((err) => {
+          console.warn('Fehler beim Speichern in Dateien:', err)
+        })
+      }
+      return stamped
+    }
   }
   
   // Fallback: localStorage
@@ -205,12 +227,12 @@ export const saveCharacterAsync = async (character: Character): Promise<void> =>
     await saveCharacterToSupabase(groupId, nextCharacter)
       .then((ok) => {
         if (!ok) {
-          reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Es existiert vermutlich eine neuere Version.')
+          reportRemoteSaveFailure()
         }
       })
       .catch(err => {
         console.warn('Fehler beim Speichern in Supabase:', err)
-        reportRemoteSaveFailure('Supabase-Speichern fehlgeschlagen. Bitte Verbindung prüfen.')
+        reportRemoteSaveFailure()
       })
   }
 }

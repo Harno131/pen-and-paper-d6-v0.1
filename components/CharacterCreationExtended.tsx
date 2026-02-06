@@ -71,7 +71,6 @@ export default function CharacterCreationExtended({
   const [sortAttributesByBlips, setSortAttributesByBlips] = useState(false)
   const [newSpecialization, setNewSpecialization] = useState({ name: '', skillId: '' })
   const [settings, setSettings] = useState(getCharacterCreationSettings())
-  const [charTraits, setCharTraits] = useState('')
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [profileImageSaved, setProfileImageSaved] = useState(false)
   const [visibleEquipment, setVisibleEquipment] = useState('')
@@ -164,7 +163,6 @@ export default function CharacterCreationExtended({
       setSelectedAlignment(undefined)
       setAttributeBonuses({})
       setAttributeStepBonuses({})
-      setCharTraits('')
       setProfileImageUrl(null)
       setProfileImageSaved(false)
     }
@@ -241,13 +239,8 @@ export default function CharacterCreationExtended({
   const usedAttributePoints = Object.values(attributeBonuses).reduce((sum, val) => sum + val, 0)
   const usedSkillPoints = Object.values(skillBonuses).reduce((sum, val) => sum + val, 0)
 
-  const traitList = charTraits
-    .split(/\n|,|;/)
-    .map(t => t.trim())
-    .filter(Boolean)
-  const traitCount = traitList.length
-  const wordCount = charTraits.trim() ? charTraits.trim().split(/\s+/).length : 0
-  const canGenerateProfileImage = traitCount <= 5 && !!characterName.trim() && !profileImageUrl
+  const traitList: string[] = []
+  const canGenerateProfileImage = !!characterName.trim() && !profileImageUrl
 
   const getAttributeScore = (value: string): number => {
     const { diceCount, modifier } = parseD6Value(value)
@@ -903,25 +896,6 @@ export default function CharacterCreationExtended({
               </div>
 
               <div>
-                <label className="block text-white/90 mb-2 font-medium">Zusätzliche Merkmale (bis zu 5):</label>
-                <textarea
-                  value={charTraits}
-                  onChange={(e) => setCharTraits(e.target.value)}
-                  rows={4}
-                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  placeholder="z.B. narbiges Gesicht&#10;trägt einen blauen Schal&#10;hat leuchtende Augen"
-                />
-                <div className="flex items-center justify-between mt-2 text-xs">
-                  <span className="text-white/70">
-                    Merkmale: {traitCount}/5 · Wörter: {wordCount}/50
-                  </span>
-                  {traitCount > 5 && (
-                    <span className="text-yellow-400">Bitte maximal 5 Merkmale verwenden.</span>
-                  )}
-                </div>
-              </div>
-
-              <div>
                 <label className="block text-white/90 mb-2 font-medium">Gesinnung: *</label>
                 <AlignmentSelector
                   selectedAlignment={selectedAlignment}
@@ -1256,13 +1230,15 @@ export default function CharacterCreationExtended({
 
               <div className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-4">
                 <div>
-                  <label className="block text-white/90 mb-2 font-medium">Sichtbare Ausrüstung (für das Profilbild):</label>
+                  <label className="block text-white/90 mb-2 font-medium">
+                    Profilbild: Gesichtsausdruck, Pose, Kleidung/Rüstung, Waffen, Ausrüstung,...
+                  </label>
                   <textarea
                     value={visibleEquipment}
                     onChange={(e) => setVisibleEquipment(e.target.value)}
                     rows={3}
                     className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                    placeholder="z.B. Lederweste, Dolch, Kartenrolle"
+                    placeholder='Oder probier doch mal den Knopf "Prompt-Vorschau generieren"'
                   />
                 </div>
                 <div className="flex flex-col gap-4">

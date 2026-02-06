@@ -140,6 +140,12 @@ export default function RulebookMasterPage() {
         <div className="bg-white/10 rounded-xl p-6 border border-white/20">
           <h1 className="text-3xl font-bold mb-2">Rule-Book-Master</h1>
           <p className="text-white/70">Prüfe neue Fertigkeiten und Beschreibungen.</p>
+          <button
+            onClick={() => window.history.back()}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold"
+          >
+            ← Zurück
+          </button>
           {!isMaster && (
             <div className="mt-3 text-yellow-300 text-sm">
               Hinweis: Zugriff ist nur für den Rule-Book-Master (Flori).

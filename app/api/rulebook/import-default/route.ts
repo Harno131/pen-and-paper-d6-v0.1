@@ -2,24 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as fs from 'fs'
 import * as path from 'path'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { validateMasterFromRequest } from '../utils'
 
 export const revalidate = 0
-
-const MASTER_NAME = 'Flori'
-
-const validateMaster = (playerName?: string | null, password?: string | null) => {
-  const expected = process.env.RBM_PASSWORD || ''
-  if (!expected) {
-    return { ok: false, error: 'RBM_PASSWORD fehlt in der Umgebung.' }
-  }
-  if (!playerName || playerName.trim() !== MASTER_NAME) {
-    return { ok: false, error: 'Nicht als Rule-Book-Master angemeldet.' }
-  }
-  if (!password || password !== expected) {
-    return { ok: false, error: 'Rule-Book-Master-Passwort ist falsch.' }
-  }
-  return { ok: true }
-}
 
 const normalizeKey = (value: string) =>
   value
@@ -32,9 +17,7 @@ const normalizeKey = (value: string) =>
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { playerName, password } = body || {}
-    const auth = validateMaster(playerName, password)
+    const auth = validateMasterFromRequest(request)
     if (!auth.ok) {
       return NextResponse.json(
         { error: auth.error },

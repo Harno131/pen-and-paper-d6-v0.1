@@ -27,6 +27,28 @@ export type RulebookSpecialization = {
   description?: string | null
 }
 
+export const loginRulebookMaster = async (payload: {
+  playerName: string
+  password: string
+}) => {
+  const response = await fetch('/api/rulebook/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || 'Login fehlgeschlagen.')
+  }
+}
+
+const ensureRulebookLogin = async (playerName: string, password: string) => {
+  if (!playerName || !password) {
+    throw new Error('Bitte Rule-Book-Master-Passwort eingeben.')
+  }
+  await loginRulebookMaster({ playerName, password })
+}
+
 export const enqueueRulebookReview = async (payload: {
   skillName: string
   attribute: string
@@ -61,10 +83,8 @@ export const getRulebookReviews = async (params: {
   password: string
   action?: string
 }): Promise<RulebookReview[]> => {
-  const query = new URLSearchParams({
-    playerName: params.playerName,
-    password: params.password,
-  })
+  await ensureRulebookLogin(params.playerName, params.password)
+  const query = new URLSearchParams()
   if (params.action) {
     query.set('action', params.action)
   }
@@ -87,10 +107,18 @@ export const updateRulebookReview = async (payload: {
   editedDescription?: string
   editedSpecName?: string
 }) => {
+  await ensureRulebookLogin(payload.playerName, payload.password)
   const response = await fetch('/api/rulebook/reviews', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      id: payload.id,
+      action: payload.action,
+      editedName: payload.editedName,
+      editedAttribute: payload.editedAttribute,
+      editedDescription: payload.editedDescription,
+      editedSpecName: payload.editedSpecName,
+    }),
   })
   if (!response.ok) {
     const text = await response.text()
@@ -103,10 +131,11 @@ export const importRulebookSkills = async (payload: {
   playerName: string
   password: string
 }) => {
+  await ensureRulebookLogin(payload.playerName, payload.password)
   const response = await fetch('/api/rulebook/skills', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ skills: payload.skills }),
   })
   if (!response.ok) {
     const text = await response.text()
@@ -120,10 +149,11 @@ export const importRulebookDefaults = async (payload: {
   playerName: string
   password: string
 }) => {
+  await ensureRulebookLogin(payload.playerName, payload.password)
   const response = await fetch('/api/rulebook/import-default', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({}),
   })
   if (!response.ok) {
     const text = await response.text()

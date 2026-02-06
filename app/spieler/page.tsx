@@ -8,6 +8,7 @@ import {
   getJournalEntries, 
   getSharedImages, 
   saveCharacters,
+  saveCharacterAsync,
   saveJournalEntry,
   deleteCharacter,
   updateLastPlayedDate,
@@ -213,6 +214,7 @@ export default function SpielerPage() {
   const [debugData, setDebugData] = useState<any | null>(null)
   const [debugError, setDebugError] = useState('')
   const [debugSyncMessage, setDebugSyncMessage] = useState('')
+  const [manualSaveStatus, setManualSaveStatus] = useState('')
   const [supabaseUrl, setSupabaseUrl] = useState('')
   const [journalFallcrestFilter, setJournalFallcrestFilter] = useState(true)
   const [journalCategory, setJournalCategory] = useState<'all' | 'personen' | 'monster' | 'orte'>('all')
@@ -312,6 +314,21 @@ export default function SpielerPage() {
   }
   const togglePresetDisplay = (preset: 1 | 2) => {
     setActiveSkillPreset((current) => (current === preset ? null : preset))
+  }
+  const handleManualSupabaseSave = async () => {
+    if (!selectedCharacter) return
+    if (!groupId) {
+      setManualSaveStatus('Kein Gruppen-Code gefunden. Bitte neu beitreten.')
+      return
+    }
+    setManualSaveStatus('Speichere in Supabase...')
+    try {
+      await saveCharacterAsync(selectedCharacter)
+      setManualSaveStatus('In Supabase gespeichert.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler'
+      setManualSaveStatus(`Supabase-Speichern fehlgeschlagen: ${message}`)
+    }
   }
   const renderSkillsByAttribute = () => {
     if (!selectedCharacter) return null
@@ -688,6 +705,17 @@ export default function SpielerPage() {
       window.removeEventListener('storage-error', handleStorageError as EventListener)
     }
   }, [])
+
+  useEffect(() => {
+    if (!selectedCharacter || !groupId) return
+    const interval = window.setInterval(() => {
+      if (isSavingRef.current) return
+      saveCharacterAsync(selectedCharacter).catch((error) => {
+        console.warn('Auto-Save fehlgeschlagen:', error)
+      })
+    }, 30000)
+    return () => window.clearInterval(interval)
+  }, [selectedCharacter, groupId])
 
   useEffect(() => {
     setSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || '')
@@ -1217,8 +1245,8 @@ export default function SpielerPage() {
           </div>
         </div>
         {storageError && (
-          <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200">
-            <div className="font-semibold mb-1">Speicher-Problem</div>
+          <div className="mb-6 rounded-lg border border-sky-500/40 bg-sky-500/10 p-4 text-sky-100">
+            <div className="font-semibold mb-1">Hinweis</div>
             <div className="text-sm">{storageError}</div>
             <button
               onClick={() => {
@@ -1504,14 +1532,25 @@ export default function SpielerPage() {
                       <span className="font-semibold">Geld:</span>{' '}
                       {formatCopper(selectedCharacter.copperCoins)}
                     </p>
+                    {manualSaveStatus && (
+                      <p className="text-sm text-white/60">{manualSaveStatus}</p>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={() => setActiveTab('characters')}
-                  className="text-white/70 hover:text-white"
-                >
-                  ← Zurück zur Übersicht
-                </button>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    onClick={handleManualSupabaseSave}
+                    className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-semibold"
+                  >
+                    In Supabase sichern
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('characters')}
+                    className="text-white/70 hover:text-white"
+                  >
+                    ← Zurück zur Übersicht
+                  </button>
+                </div>
               </div>
               
               {/* Trefferpunkte */}
