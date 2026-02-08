@@ -23,6 +23,21 @@ const inferMood = (text: string): string => {
   return 'mystical and calm'
 }
 
+const FATE_ADJECTIVES = [
+  'gezeichnet von einer alten Narbe',
+  'umgeben von einem Hauch von Verfall',
+  'mit einem stechenden Blick',
+  'getragen von schwerer Entschlossenheit',
+  'von stiller Trauer durchdrungen',
+  'mit der Ruhe eines erfahrenen Veteranen',
+  'unter einem Fluch der Vergangenheit',
+]
+
+const getFateAdjective = () => {
+  const idx = Math.floor(Math.random() * FATE_ADJECTIVES.length)
+  return FATE_ADJECTIVES[idx]
+}
+
 // Baut den deutschen Prompt zusammen
 const buildPrompt = (payload: GenerateImageRequest): string => {
   const { type, data } = payload
@@ -121,21 +136,35 @@ export async function POST(request: Request) {
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
-    const rawPrompt =
+    const promptExtras = Array.isArray(body.promptItems) && body.promptItems.length > 0
+      ? `${body.promptItems.join(', ')}${body.background ? `. Hintergrund: ${body.background}` : ''}`
+      : ''
+    const basePrompt =
       typeof body.promptOverride === 'string' && body.promptOverride.trim()
         ? body.promptOverride.trim()
-        : Array.isArray(body.promptItems) && body.promptItems.length > 0
-          ? `${body.promptItems.join(', ')}${body.background ? `. Hintergrund: ${body.background}` : ''}`
-          : buildPrompt(body)
+        : buildPrompt(body)
+    const fateAdjective = getFateAdjective()
+    const rawPrompt = promptExtras
+      ? `${basePrompt}. Zusätze: ${promptExtras}. Schicksal: ${fateAdjective}.`
+      : `${basePrompt}. Schicksal: ${fateAdjective}.`
     const geminiInstruction = `
-      Act as an expert AI image prompter for the world of 'Fallcrest'.
-      Transform these character/event details into a highly detailed, atmospheric English image prompt: "${rawPrompt}".
+  Role: Expert Cinematic Concept Artist & Dark Fantasy Author.
+  Task: Transform minimal RPG character data into a professional, highly descriptive English image prompt for the FLUX.1 model.
+  
+  Style-Bible 'Fallcrest':
+  - Aesthetic: Grimdark Fantasy, moody, mysterious. 
+  - Lighting: Chiaroscuro (deep shadows, single light sources), volumetric fog, amber or cold blue accents.
+  - Textures: Emphasize 'The Used Look'. Gear should be scratched, leather weathered, skin soot-stained or scarred.
+  
+  Creative Freedom:
+  - If the input is "Dwarf, Warrior", don't just say that. Describe his braided, salt-and-pepper beard, the notch in his iron pauldron, and the way he grips his war-hammer.
+  - Add incidental details: A crow in the background, a faint magical shimmer, or mud on the boots.
+  - Environment: Integrate the chosen background (e.g., 'Gasthof') with details like 'smoke-filled rafters' or 'spilled ale on rough oak tables'.
 
-      Rules:
-      - Style: Dark Fantasy Oil Painting, 'Fallcrest' aesthetic (mystical, foggy, dramatic shadows).
-      - Details: Focus on weathered gear, realistic textures, and moody lighting (Chiaroscuro).
-      - Output: ONLY the final English prompt text. No introduction.
-    `;
+  Input Data: "${rawPrompt}"
+  
+  Output: ONLY the final, epic, cinematic English prompt. No "Here is your prompt", no quotes.
+`
     
     const result = await model.generateContent(geminiInstruction)
     const optimizedPrompt = result.response.text().trim()
