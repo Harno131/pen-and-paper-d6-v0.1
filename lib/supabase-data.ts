@@ -832,4 +832,3 @@ export const deleteJournalEntryFromSupabase = async (groupId: string, entryId: s
     .eq('group_id', groupId)
   return !error
 }
-
