@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Character } from '@/types'
+import { saveCharacterAsync } from '@/lib/data'
 import { getAlignment } from '@/lib/alignments'
 import { extractTagsFromText, normalizeTag } from '@/lib/tags'
 import { buildNpcPromptOptions, buildPromptText, PROMPT_BACKGROUNDS, type PromptOption } from '@/lib/prompt-builder'
@@ -200,6 +201,16 @@ export default function NpcCreationExtended({ onComplete, onCancel, editingNpc }
       if (response.ok && json?.imageUrl) {
         setPortraitUrl(json.imageUrl)
         setPortraitSaved(false)
+        if (editingNpc) {
+          const withImage = {
+            ...editingNpc,
+            profileImageUrl: json.imageUrl,
+            imageUrl: json.imageUrl,
+            updatedAt: new Date(),
+          }
+          await saveCharacterAsync(withImage)
+          setPortraitSaved(true)
+        }
       } else {
         const reason = typeof json?.error === 'string'
           ? json.error

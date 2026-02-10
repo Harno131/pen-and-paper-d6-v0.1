@@ -39,4 +39,7 @@ Du bist ein Experte für UI/UX-Design und Fullstack-Entwicklung. Dein Ziel ist d
   - Steps 1-3: 1 Blip/step
   - Steps 4-6: 2 Blips/step
   - Steps 7-9: 3 Blips/step
-- **Efficiency Rule:** Attributes are expensive foundations; Skills and Specializations are cheaper "add-ons" that always start their cost scaling at Step 1 (1 Blip).
+- **Efficiency Rule:** Attributes are expensive foundations; Skills and Specializations are cheaper "add-ons" that always start their cost scaling at Step 1 (1 Blip)
+
+Datensicherheit: die Sicherung von Nutzern eingegebene Daten (Erweiterung der Fertigkeiten, Spezialisierungen und Hinweistexte, Steigerungen der Attributs- Fertigkeits und Spezialisierungs-Werte hat oberste Priorität. Änderungen sind gegelmäßig mit Datumsstempel abzuspeichern.
+Die Tatsache, dass man trotz öffentlichem Deploy immer noch alte Versionen der App öffnen kann, muss abgestellt werden.

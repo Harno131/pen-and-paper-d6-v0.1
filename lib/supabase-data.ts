@@ -545,15 +545,63 @@ export const saveCharacterToSupabase = async (groupId: string, character: Charac
 export const deleteCharacterInSupabase = async (groupId: string, characterId: string): Promise<boolean> => {
   const supabase = createSupabaseClient()
   if (!supabase) return false
-
-  // Soft delete: Setze deleted_date
   const { error } = await supabase
     .from('characters')
-    .update({ deleted_date: new Date().toISOString() })
+    .update({ deleted_date: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', characterId)
     .eq('group_id', groupId)
-
   return !error
+}
+
+export const restoreCharacterInSupabase = async (groupId: string, characterId: string): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+  const { error } = await supabase
+    .from('characters')
+    .update({ deleted_date: null, updated_at: new Date().toISOString() })
+    .eq('id', characterId)
+    .eq('group_id', groupId)
+  return !error
+}
+
+export const getDeletedCharactersFromSupabase = async (groupId: string): Promise<Character[]> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('characters')
+    .select('*')
+    .eq('group_id', groupId)
+    .not('deleted_date', 'is', null)
+  if (error || !data) return []
+  return data.map((char: any) => ({
+    id: char.id,
+    name: char.name,
+    playerName: char.player_name,
+    className: char.class_name,
+    race: char.race,
+    age: char.age,
+    gender: char.gender,
+    level: char.level || 1,
+    attributes: char.attributes,
+    skills: char.skills || [],
+    inventory: char.inventory || [],
+    alignment: char.alignment,
+    notes: char.notes,
+    imageUrl: char.image_url || undefined,
+    profileImageUrl: char.profile_image_url || char.image_url || undefined,
+    tags: Array.isArray(char.tags) ? char.tags : undefined,
+    createdDate: char.created_date ? new Date(char.created_date) : undefined,
+    lastPlayedDate: char.last_played_date ? new Date(char.last_played_date) : undefined,
+    deletedDate: char.deleted_date ? new Date(char.deleted_date) : undefined,
+    updatedAt: char.updated_at ? new Date(char.updated_at) : undefined,
+    baseAttributes: char.base_attributes,
+    baseSkills: char.base_skills,
+    attributePointsUsed: char.attribute_points_used,
+    skillPointsUsed: char.skill_points_used,
+    blibsUsed: char.blibs_used,
+    earnedBlips: char.earned_blips || 0,
+    copperCoins: char.copper_coins ?? 0,
+  }))
 }
 
 // Fertigkeiten-Funktionen
@@ -771,6 +819,17 @@ export const saveJournalEntryToSupabase = async (groupId: string, entry: Journal
       time_of_day: entry.timeOfDay || null,
     })
 
+  return !error
+}
+
+export const deleteJournalEntryFromSupabase = async (groupId: string, entryId: string): Promise<boolean> => {
+  const supabase = createSupabaseClient()
+  if (!supabase) return false
+  const { error } = await supabase
+    .from('journal_entries')
+    .delete()
+    .eq('id', entryId)
+    .eq('group_id', groupId)
   return !error
 }
 

@@ -836,17 +836,21 @@ export default function SpielleiterPage() {
   }, [router])
 
   const loadData = useCallback(async (options?: { forceRulebookRefresh?: boolean }) => {
-    // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
-    const { getCharactersAsync } = await import('@/lib/data')
+    const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
+    if (currentGroupId) {
+      const { runSupabaseMigrationIfNeeded } = await import('@/lib/supabase-migrate')
+      await runSupabaseMigrationIfNeeded(currentGroupId)
+    }
+    const { getCharactersAsync, getDeletedCharactersAsync, getAvailableSkillsAsync } = await import('@/lib/data')
     const allCharacters = await getCharactersAsync()
     setCharacters(allCharacters)
-    
-    setDeletedCharacters(getDeletedCharacters())
+    const deleted = await getDeletedCharactersAsync()
+    setDeletedCharacters(deleted)
     const entries = await getJournalEntries()
     setJournalEntries(entries)
     setSharedImages(getSharedImages())
     setDiceRolls(getDiceRolls())
-    const localSkills = getAvailableSkills()
+    const localSkills = await getAvailableSkillsAsync(currentGroupId)
     setSettings(getCharacterCreationSettings())
     const storageError = getStorageError()
     if (storageError) {
@@ -855,11 +859,8 @@ export default function SpielleiterPage() {
     const bestiaryData = await getBestiary()
     setBestiary(bestiaryData)
     
-    // Lade Gruppenmitglieder und Kalender-Startdaten
-    const currentGroupId = groupId || (typeof window !== 'undefined' ? localStorage.getItem('groupId') : null)
     if (currentGroupId) {
-      const remoteSkills = await getAvailableSkillsFromSupabase(currentGroupId)
-      const baseSkills = remoteSkills.length > 0 ? remoteSkills : localSkills
+      const baseSkills = localSkills
       const templates = await getInjuryTemplates()
       setInjuryTemplates(templates)
       const injuries = await getCharacterInjuries(currentGroupId)
@@ -1190,10 +1191,9 @@ export default function SpielleiterPage() {
     }
   }
 
-  const handleRestoreCharacter = (characterId: string) => {
-    if (restoreCharacter(characterId)) {
-      loadData()
-    }
+  const handleRestoreCharacter = async (characterId: string) => {
+    const ok = await restoreCharacter(characterId)
+    if (ok) loadData()
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3091,11 +3091,9 @@ export default function SpielleiterPage() {
                           <button
                             onClick={async () => {
                               if (confirm('Möchtest du diesen Eintrag wirklich löschen?')) {
-                                const updatedEntries = journalEntries.filter(e => e.id !== entry.id)
-                                setJournalEntries(updatedEntries)
-                                // Lösche aus localStorage
-                                localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
-                                // TODO: Implementiere deleteJournalEntry in Supabase
+                                const { deleteJournalEntry } = await import('@/lib/data')
+                                const ok = await deleteJournalEntry(entry.id)
+                                if (ok) setJournalEntries(prev => prev.filter(e => e.id !== entry.id))
                               }
                             }}
                             className="px-3 py-1 bg-red-600/50 hover:bg-red-700/70 text-white rounded text-sm transition-colors"
@@ -3768,7 +3766,7 @@ export default function SpielleiterPage() {
                     {editingSkill ? (
                       <>
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             if (editingSkill.name.trim()) {
                               const updates = {
                                 name: editingSkill.name.trim(),
@@ -3776,16 +3774,7 @@ export default function SpielleiterPage() {
                                 isWeakened: editingSkill.isWeakened,
                                 description: editingSkill.description || undefined,
                               }
-                              updateSkill(editingSkill.id, updates)
-                              if (groupId) {
-                                saveSkillToSupabase(groupId, {
-                                  ...editingSkill,
-                                  ...updates,
-                                  bonusDice: editingSkill.bonusDice || 0,
-                                  bonusSteps: editingSkill.bonusSteps || 0,
-                                  specializations: editingSkill.specializations || [],
-                                })
-                              }
+                              await updateSkill(editingSkill.id, updates)
                               pushRulebookReview(
                                 editingSkill.name.trim(),
                                 editingSkill.attribute,
@@ -3811,33 +3800,29 @@ export default function SpielleiterPage() {
                       </>
                     ) : (
                       <button
-                        onClick={() => {
-                          if (newSkill.name.trim()) {
-                            const created = addSkill({
-                              name: newSkill.name.trim(),
-                              attribute: newSkill.attribute,
-                              bonusDice: 0,
-                              specializations: [],
-                              isWeakened: newSkill.isWeakened,
-                              isCustom: true,
-                              description: newSkill.description || undefined,
-                            })
-                            if (!created) {
-                              const storageError = getStorageError()
-                              setStorageError(storageError || 'Fertigkeit konnte nicht gespeichert werden.')
-                              return
-                            }
-                            if (groupId) {
-                              saveSkillToSupabase(groupId, created)
-                            }
-                            pushRulebookReview(
-                              newSkill.name.trim(),
-                              newSkill.attribute,
-                              newSkill.description || ''
-                            )
-                            setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
-                            loadData()
+                        onClick={async () => {
+                          if (!newSkill.name.trim()) return
+                          const created = await addSkill({
+                            name: newSkill.name.trim(),
+                            attribute: newSkill.attribute,
+                            bonusDice: 0,
+                            specializations: [],
+                            isWeakened: newSkill.isWeakened,
+                            isCustom: true,
+                            description: newSkill.description || undefined,
+                          })
+                          if (!created) {
+                            const storageError = getStorageError()
+                            setStorageError(storageError || 'Fertigkeit konnte nicht gespeichert werden.')
+                            return
                           }
+                          pushRulebookReview(
+                            newSkill.name.trim(),
+                            newSkill.attribute,
+                            newSkill.description || ''
+                          )
+                          setNewSkill({ name: '', attribute: 'Reflexe', isWeakened: false, description: '' })
+                          loadData()
                         }}
                         className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-colors"
                       >
@@ -3934,18 +3919,9 @@ export default function SpielleiterPage() {
                                 ✏️
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   const nextWeakened = !skill.isWeakened
-                                  updateSkill(skill.id, { isWeakened: nextWeakened })
-                                  if (groupId) {
-                                    saveSkillToSupabase(groupId, {
-                                      ...skill,
-                                      isWeakened: nextWeakened,
-                                      bonusDice: skill.bonusDice || 0,
-                                      bonusSteps: skill.bonusSteps || 0,
-                                      specializations: skill.specializations || [],
-                                    })
-                                  }
+                                  await updateSkill(skill.id, { isWeakened: nextWeakened })
                                   loadData()
                                 }}
                                 className={`px-3 py-1 rounded text-sm ${
@@ -3957,14 +3933,10 @@ export default function SpielleiterPage() {
                                 {skill.isWeakened ? 'Geschwächt' : 'Schwächen'}
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm(`Möchtest du "${skill.name}" wirklich löschen?`)) {
-                                    removeSkill(skill.id)
-                                    if (groupId) {
-                                      removeSkillFromSupabase(groupId, skill.id)
-                                    }
-                                    loadData()
-                                  }
+                                onClick={async () => {
+                                  if (!confirm(`Möchtest du "${skill.name}" wirklich löschen?`)) return
+                                  await removeSkill(skill.id)
+                                  loadData()
                                 }}
                                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
                               >

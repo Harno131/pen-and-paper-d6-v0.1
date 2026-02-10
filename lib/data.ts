@@ -6,6 +6,8 @@ import {
   getCharactersFromSupabase,
   saveCharacterToSupabase,
   deleteCharacterInSupabase,
+  restoreCharacterInSupabase,
+  getDeletedCharactersFromSupabase,
   getAvailableSkillsFromSupabase,
   saveSkillToSupabase,
   removeSkillFromSupabase,
@@ -13,14 +15,15 @@ import {
   saveGroupSettings,
 } from './supabase-data'
 import {
-  loadCharactersFromFile,
   saveCharactersToFile,
-  loadJournalEntriesFromFile,
   saveJournalEntriesToFile,
   isFileStorageEnabled,
 } from './file-storage'
 
-// Hybrid: Supabase wenn verfügbar, sonst localStorage
+// Supabase-only: In-Memory-Cache für synchrone Aufrufer (nach getCharactersAsync / getJournalEntries)
+let charactersCache: Character[] = []
+let journalCache: JournalEntry[] = []
+let deletedCharactersCache: DeletedCharacter[] = []
 let lastStorageError: string | null = null
 
 const emitStorageError = () => {
@@ -58,22 +61,10 @@ const isSupabaseAvailable = (): boolean => {
   return supabase !== null && groupId !== null
 }
 
-// Synchron für Kompatibilität (localStorage)
+// Synchron: liefert gecachten Stand (nach getCharactersAsync geladen aus Supabase)
 export const getCharacters = (): Character[] => {
   if (typeof window === 'undefined') return []
-  const stored = localStorage.getItem('characters')
-  if (stored) {
-    const characters = JSON.parse(stored)
-    return characters.map((char: any) => ({
-      ...char,
-      createdDate: char.createdDate ? new Date(char.createdDate) : undefined,
-      lastPlayedDate: char.lastPlayedDate ? new Date(char.lastPlayedDate) : undefined,
-      deletedDate: char.deletedDate ? new Date(char.deletedDate) : undefined,
-      updatedAt: char.updatedAt ? new Date(char.updatedAt) : undefined,
-    }))
-  }
-  // Keine Standard-Charaktere mehr - alle Charaktere kommen aus Supabase/localStorage
-  return []
+  return charactersCache
 }
 
 // Synchron für Kompatibilität (localStorage)
@@ -109,202 +100,94 @@ export const saveCharacters = (characters: Character[], options?: SaveCharacters
     return char
   })
 
-  // Versuche auch Supabase zu speichern (async im Hintergrund)
+  charactersCache = stamped
+
   if (isSupabaseAvailable()) {
     const groupId = localStorage.getItem('groupId')
     if (groupId) {
-      // Speichere im Hintergrund (nicht blockierend)
       stamped.forEach(char => {
         saveCharacterToSupabase(groupId, char)
           .then((ok) => {
-            if (!ok) {
-              reportRemoteSaveFailure()
-            }
+            if (!ok) reportRemoteSaveFailure()
           })
-          .catch(err => {
-            console.warn('Failed to save to Supabase:', err)
-            reportRemoteSaveFailure()
-          })
+          .catch(() => reportRemoteSaveFailure())
       })
+      if (isFileStorageEnabled()) {
+        saveCharactersToFile(groupId, stamped).catch(() => {})
+      }
     }
   }
-  
-  // Immer auch localStorage (für Fallback)
-  safeSetItem('characters', JSON.stringify(stamped))
 }
 
-// Neue async Funktionen für Supabase und Datei-Storage
+export const clearDataCaches = (): void => {
+  charactersCache = []
+  journalCache = []
+  deletedCharactersCache = []
+  availableSkillsCache = []
+}
+
 export const getCharactersAsync = async (): Promise<Character[]> => {
   if (typeof window === 'undefined') return []
-  
   const groupId = localStorage.getItem('groupId')
-  if (!groupId) {
-    // Fallback: localStorage
-    return getCharacters()
+  if (!groupId || !isSupabaseAvailable()) {
+    charactersCache = []
+    return []
   }
-  
-  // 1. Prüfe Datei-Storage (wenn aktiviert)
-  if (isFileStorageEnabled()) {
-    const fileCharacters = await loadCharactersFromFile(groupId)
-    if (fileCharacters.length > 0) {
-      const localCharacters = getCharacters()
-      const merged = mergeCharactersByUpdatedAt(fileCharacters, localCharacters)
-      // Auch in localStorage speichern für Offline-Fallback
-      safeSetItem('characters', JSON.stringify(merged))
-      return merged
-    }
-  }
-  
-  // 2. Prüfe Supabase
-  if (isSupabaseAvailable()) {
-    const characters = await getCharactersFromSupabase(groupId)
-    if (characters.length > 0) {
-      const localCharacters = getCharacters()
-      const merged = mergeCharactersByUpdatedAt(characters, localCharacters)
-      // Auch in localStorage speichern für Offline-Fallback
-      safeSetItem('characters', JSON.stringify(merged))
-      // Optional: Auch in Dateien speichern (Backup)
-      if (isFileStorageEnabled()) {
-        await saveCharactersToFile(groupId, merged).catch(err => {
-          console.warn('Fehler beim Speichern in Dateien:', err)
-        })
-      }
-      return merged
-    }
-    const localCharacters = getCharacters()
-    if (localCharacters.length > 0) {
-      const now = new Date()
-      const stamped = localCharacters.map((char) => ({
-        ...char,
-        updatedAt: char.updatedAt || now,
-      }))
-      await Promise.all(
-        stamped.map((char) =>
-          saveCharacterToSupabase(groupId, char).catch((err) => {
-            console.warn('Fehler beim initialen Sync zu Supabase:', err)
-          })
-        )
-      )
-      safeSetItem('characters', JSON.stringify(stamped))
-      if (isFileStorageEnabled()) {
-        await saveCharactersToFile(groupId, stamped).catch((err) => {
-          console.warn('Fehler beim Speichern in Dateien:', err)
-        })
-      }
-      return stamped
-    }
-  }
-  
-  // Fallback: localStorage
-  return getCharacters()
+  const characters = await getCharactersFromSupabase(groupId)
+  charactersCache = characters
+  return characters
 }
 
 export const saveCharacterAsync = async (character: Character): Promise<void> => {
   if (typeof window === 'undefined') return
-  
   const groupId = localStorage.getItem('groupId')
   const nextCharacter = { ...character, updatedAt: new Date() }
-  
-  // Immer auch localStorage
-  const characters = getCharacters()
+  const characters = [...charactersCache]
   const index = characters.findIndex(c => c.id === nextCharacter.id)
-  if (index >= 0) {
-    characters[index] = nextCharacter
-  } else {
-    characters.push(nextCharacter)
-  }
+  if (index >= 0) characters[index] = nextCharacter
+  else characters.push(nextCharacter)
   saveCharacters(characters, { touchedIds: [nextCharacter.id] })
-  
-  // Speichere in Datei-Storage (wenn aktiviert)
-  if (isFileStorageEnabled() && groupId) {
-    await saveCharactersToFile(groupId, characters).catch(err => {
-      console.warn('Fehler beim Speichern in Dateien:', err)
-    })
-  }
-  
-  // Speichere in Supabase (wenn verfügbar)
   if (isSupabaseAvailable() && groupId) {
     await saveCharacterToSupabase(groupId, nextCharacter)
-      .then((ok) => {
-        if (!ok) {
-          reportRemoteSaveFailure()
-        }
-      })
-      .catch(err => {
-        console.warn('Fehler beim Speichern in Supabase:', err)
-        reportRemoteSaveFailure()
-      })
+      .then((ok) => { if (!ok) reportRemoteSaveFailure() })
+      .catch(() => reportRemoteSaveFailure())
   }
 }
 
 export const getJournalEntries = async (): Promise<JournalEntry[]> => {
   if (typeof window === 'undefined') return []
-  
   const groupId = localStorage.getItem('groupId')
-  
-  // 1. Prüfe Datei-Storage (wenn aktiviert)
-  if (isFileStorageEnabled() && groupId) {
-    const fileEntries = await loadJournalEntriesFromFile(groupId)
-    if (fileEntries.length > 0) {
-      // Auch in localStorage speichern für Offline-Fallback
-      safeSetItem('journalEntries', JSON.stringify(fileEntries))
-      return fileEntries
-    }
+  if (!groupId || !isSupabaseAvailable()) {
+    journalCache = []
+    return []
   }
-  
-  // 2. Prüfe Supabase
-  if (isSupabaseAvailable() && groupId) {
-    const { getJournalEntriesFromSupabase } = await import('./supabase-data')
-    const entries = await getJournalEntriesFromSupabase(groupId)
-    if (entries.length > 0) {
-      // Auch in localStorage speichern für Offline-Fallback
-      safeSetItem('journalEntries', JSON.stringify(entries))
-      // Optional: Auch in Dateien speichern (Backup)
-      if (isFileStorageEnabled()) {
-        await saveJournalEntriesToFile(groupId, entries).catch(err => {
-          console.warn('Fehler beim Speichern in Dateien:', err)
-        })
-      }
-      return entries
-    }
-  }
-  
-  // Fallback: localStorage
-  const stored = localStorage.getItem('journalEntries')
-  if (stored) {
-    const entries = JSON.parse(stored)
-    return entries.map((e: any) => ({
-      ...e,
-      timestamp: new Date(e.timestamp),
-    }))
-  }
-  return []
+  const { getJournalEntriesFromSupabase } = await import('./supabase-data')
+  const entries = await getJournalEntriesFromSupabase(groupId)
+  journalCache = entries
+  return entries
 }
 
 export const saveJournalEntry = async (entry: JournalEntry): Promise<void> => {
   if (typeof window === 'undefined') return
-  
   const groupId = localStorage.getItem('groupId')
-  
-  // Immer auch localStorage
-  const entries = await getJournalEntries()
-  entries.push(entry)
-  safeSetItem('journalEntries', JSON.stringify(entries))
-  
-  // Speichere in Datei-Storage (wenn aktiviert)
-  if (isFileStorageEnabled() && groupId) {
-    await saveJournalEntriesToFile(groupId, entries).catch(err => {
-      console.warn('Fehler beim Speichern in Dateien:', err)
-    })
-  }
-  
-  // Speichere in Supabase wenn verfügbar
   if (isSupabaseAvailable() && groupId) {
     const { saveJournalEntryToSupabase } = await import('./supabase-data')
-    await saveJournalEntryToSupabase(groupId, entry).catch(err => {
-      console.warn('Fehler beim Speichern in Supabase:', err)
-    })
+    await saveJournalEntryToSupabase(groupId, entry).catch(() => {})
   }
+  journalCache = [...journalCache, entry]
+  if (isFileStorageEnabled() && groupId) {
+    await saveJournalEntriesToFile(groupId, journalCache).catch(() => {})
+  }
+}
+
+export const deleteJournalEntry = async (entryId: string): Promise<boolean> => {
+  if (typeof window === 'undefined') return false
+  const groupId = localStorage.getItem('groupId')
+  if (!groupId || !isSupabaseAvailable()) return false
+  const { deleteJournalEntryFromSupabase } = await import('./supabase-data')
+  const ok = await deleteJournalEntryFromSupabase(groupId, entryId)
+  if (ok) journalCache = journalCache.filter(e => e.id !== entryId)
+  return ok
 }
 
 export const getSharedImages = (): SharedImage[] => {
@@ -357,77 +240,56 @@ export const saveDiceRoll = (roll: DiceRoll) => {
   safeSetItem('diceRolls', JSON.stringify(rolls))
 }
 
-// Gelöschte Charaktere (soft delete)
 export const getDeletedCharacters = (): DeletedCharacter[] => {
   if (typeof window === 'undefined') return []
-  const stored = localStorage.getItem('deletedCharacters')
-  if (stored) {
-    const deleted = JSON.parse(stored)
-    return deleted.map((char: any) => ({
-      ...char,
-      createdDate: char.createdDate ? new Date(char.createdDate) : undefined,
-      lastPlayedDate: char.lastPlayedDate ? new Date(char.lastPlayedDate) : undefined,
-      deletedDate: new Date(char.deletedDate),
-    }))
+  return deletedCharactersCache
+}
+
+export const getDeletedCharactersAsync = async (): Promise<DeletedCharacter[]> => {
+  if (typeof window === 'undefined') return []
+  const groupId = localStorage.getItem('groupId')
+  if (!groupId || !isSupabaseAvailable()) {
+    deletedCharactersCache = []
+    return []
   }
-  return []
+  const list = await getDeletedCharactersFromSupabase(groupId)
+  deletedCharactersCache = list as DeletedCharacter[]
+  return deletedCharactersCache
 }
 
-export const saveDeletedCharacters = (deletedCharacters: DeletedCharacter[]) => {
-  if (typeof window === 'undefined') return
-  safeSetItem('deletedCharacters', JSON.stringify(deletedCharacters))
-}
-
-export const deleteCharacter = (characterId: string): boolean => {
+export const deleteCharacter = async (characterId: string): Promise<boolean> => {
   if (typeof window === 'undefined') return false
-  const characters = getCharacters()
-  const character = characters.find(c => c.id === characterId)
-  
-  if (!character) return false
-
-  // Markiere als gelöscht
+  const groupId = localStorage.getItem('groupId')
+  const character = charactersCache.find(c => c.id === characterId)
+  if (!character || !groupId) return false
+  const ok = await deleteCharacterInSupabase(groupId, characterId)
+  if (!ok) return false
+  charactersCache = charactersCache.filter(c => c.id !== characterId)
   const deletedCharacter: DeletedCharacter = {
     ...character,
     deletedDate: new Date(),
     updatedAt: new Date(),
   }
-
-  // Entferne aus aktiven Charakteren
-  const updatedCharacters = characters.filter(c => c.id !== characterId)
-  saveCharacters(updatedCharacters, { touchedIds: [characterId] })
-
-  // Füge zu gelöschten Charakteren hinzu
-  const deletedCharacters = getDeletedCharacters()
-  deletedCharacters.push(deletedCharacter)
-  saveDeletedCharacters(deletedCharacters)
-
+  deletedCharactersCache = [...deletedCharactersCache, deletedCharacter]
   return true
 }
 
-export const restoreCharacter = (characterId: string): boolean => {
+export const restoreCharacter = async (characterId: string): Promise<boolean> => {
   if (typeof window === 'undefined') return false
-  const deletedCharacters = getDeletedCharacters()
-  const deletedCharacter = deletedCharacters.find(c => c.id === characterId)
-  
-  if (!deletedCharacter) return false
-
-  // Entferne deletedDate
-  const { deletedDate, ...character } = deletedCharacter
-  const restoredCharacter: Character = {
-    ...character,
-    lastPlayedDate: new Date(), // Aktualisiere lastPlayedDate
+  const groupId = localStorage.getItem('groupId')
+  const deletedCharacter = deletedCharactersCache.find(c => c.id === characterId)
+  if (!deletedCharacter || !groupId) return false
+  const ok = await restoreCharacterInSupabase(groupId, characterId)
+  if (!ok) return false
+  const { deletedDate: _, ...rest } = deletedCharacter
+  const restored: Character = {
+    ...rest,
+    lastPlayedDate: new Date(),
     updatedAt: new Date(),
   }
-
-  // Füge zu aktiven Charakteren hinzu
-  const characters = getCharacters()
-  characters.push(restoredCharacter)
-  saveCharacters(characters, { touchedIds: [characterId] })
-
-  // Entferne aus gelöschten Charakteren
-  const updatedDeleted = deletedCharacters.filter(c => c.id !== characterId)
-  saveDeletedCharacters(updatedDeleted)
-
+  deletedCharactersCache = deletedCharactersCache.filter(c => c.id !== characterId)
+  charactersCache = [...charactersCache, restored]
+  saveCharacters(charactersCache, { touchedIds: [characterId] })
   return true
 }
 
@@ -447,66 +309,67 @@ export const updateLastPlayedDate = (characterId: string) => {
   saveCharacters(updated, { touchedIds: [characterId] })
 }
 
-// Skill-Verwaltung (globale Skill-Liste)
+let availableSkillsCache: Skill[] = []
+
 export const getAvailableSkills = (): Skill[] => {
   if (typeof window === 'undefined') return []
-  const stored = localStorage.getItem('availableSkills')
-  if (stored) {
-    const skills = JSON.parse(stored)
-    return skills.map((skill: any) => ({
-      ...skill,
-      bonusSteps: skill.bonusSteps || 0,
-      specializations: skill.specializations || [],
-    }))
+  return availableSkillsCache
+}
+
+export const getAvailableSkillsAsync = async (groupId: string | null): Promise<Skill[]> => {
+  if (typeof window === 'undefined') return []
+  if (!groupId || !isSupabaseAvailable()) {
+    availableSkillsCache = []
+    return []
   }
-  // Standard-Skills aus lib/skills.ts laden
-  const defaultSkills = getAllSkills().map((s: any, idx: number) => ({
-    id: `skill-${idx}`,
-    name: s.name,
-    attribute: s.attribute,
-    bonusDice: 0,
-    bonusSteps: 0,
-    specializations: [],
-    isWeakened: false,
-    isCustom: false,
-  }))
-  saveAvailableSkills(defaultSkills)
-  return defaultSkills
+  const skills = await getAvailableSkillsFromSupabase(groupId)
+  availableSkillsCache = skills
+  return skills
 }
 
 export const saveAvailableSkills = (skills: Skill[]): boolean => {
   if (typeof window === 'undefined') return false
-  return safeSetItem('availableSkills', JSON.stringify(skills))
+  availableSkillsCache = skills
+  return true
 }
 
-export const addSkill = (skill: Omit<Skill, 'id'>): Skill | null => {
-  const skills = getAvailableSkills()
+export const addSkill = async (skill: Omit<Skill, 'id'>): Promise<Skill | null> => {
+  const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
   const newSkill: Skill = {
     ...skill,
     id: `skill-${Date.now()}`,
   }
-  skills.push(newSkill)
-  const ok = saveAvailableSkills(skills)
-  return ok ? newSkill : null
+  availableSkillsCache = [...availableSkillsCache, newSkill]
+  if (groupId && isSupabaseAvailable()) {
+    const ok = await saveSkillToSupabase(groupId, newSkill)
+    if (!ok) return null
+  }
+  return newSkill
 }
 
-export const removeSkill = (skillId: string): boolean => {
-  const skills = getAvailableSkills()
-  const filtered = skills.filter(s => s.id !== skillId)
-  if (filtered.length === skills.length) return false
-  return saveAvailableSkills(filtered)
+export const removeSkill = async (skillId: string): Promise<boolean> => {
+  const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
+  const filtered = availableSkillsCache.filter(s => s.id !== skillId)
+  if (filtered.length === availableSkillsCache.length) return false
+  availableSkillsCache = filtered
+  if (groupId && isSupabaseAvailable()) {
+    return removeSkillFromSupabase(groupId, skillId)
+  }
+  return true
 }
 
-export const updateSkill = (skillId: string, updates: Partial<Skill>): boolean => {
-  const skills = getAvailableSkills()
-  const updated = skills.map(s => {
-    if (s.id === skillId) {
-      return { ...s, ...updates }
-    }
-    return s
-  })
-  if (updated === skills) return false
-  return saveAvailableSkills(updated)
+export const updateSkill = async (skillId: string, updates: Partial<Skill>): Promise<boolean> => {
+  const groupId = typeof window !== 'undefined' ? localStorage.getItem('groupId') : null
+  const idx = availableSkillsCache.findIndex(s => s.id === skillId)
+  if (idx < 0) return false
+  availableSkillsCache = availableSkillsCache.map(s =>
+    s.id === skillId ? { ...s, ...updates } : s
+  )
+  if (groupId && isSupabaseAvailable()) {
+    const skill = availableSkillsCache.find(s => s.id === skillId)
+    if (skill) return saveSkillToSupabase(groupId, skill)
+  }
+  return true
 }
 
 // Charaktererstellungs-Einstellungen

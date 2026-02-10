@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Character, Skill, Specialization } from '@/types'
 import { 
   saveCharacters, 
+  saveCharacterAsync,
   getCharacters, 
   getAvailableSkills,
   getCharacterCreationSettings,
@@ -389,6 +390,16 @@ export default function CharacterCreationExtended({
       if (json?.imageUrl) {
         setProfileImageUrl(json.imageUrl)
         setProfileImageSaved(false)
+        if (existingCharacter) {
+          const withImage = {
+            ...existingCharacter,
+            profileImageUrl: json.imageUrl,
+            imageUrl: json.imageUrl,
+            updatedAt: new Date(),
+          }
+          await saveCharacterAsync(withImage)
+          setProfileImageSaved(true)
+        }
       } else {
         console.warn('Portrait generation response missing imageUrl.', { status: response.status, rawText })
         const reason = typeof json?.error === 'string'

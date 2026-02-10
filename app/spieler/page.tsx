@@ -593,9 +593,11 @@ export default function SpielerPage() {
   }, [router])
 
   const loadData = useCallback(async (options?: { forceRulebookRefresh?: boolean }) => {
+    if (groupId) {
+      const { runSupabaseMigrationIfNeeded } = await import('@/lib/supabase-migrate')
+      await runSupabaseMigrationIfNeeded(groupId)
+    }
     const name = (localStorage.getItem('playerName') || '').trim()
-    
-    // Verwende getCharactersAsync() um aus Supabase zu laden (wenn verfügbar)
     const { getCharactersAsync } = await import('@/lib/data')
     const allCharacters = await getCharactersAsync()
     const normalizedName = name.toLowerCase()
@@ -622,9 +624,9 @@ export default function SpielerPage() {
     }
 
     if (groupId) {
-      const localSkills = getAvailableSkills()
-      const remoteSkills = await getAvailableSkillsFromSupabase(groupId)
-      const baseSkills = remoteSkills.length > 0 ? remoteSkills : localSkills
+      const { getAvailableSkillsAsync } = await import('@/lib/data')
+      await getAvailableSkillsAsync(groupId)
+      const baseSkills = getAvailableSkills()
       const templates = await getInjuryTemplates()
       setInjuryTemplates(templates)
       const injuries = await getCharacterInjuries(groupId)
@@ -1001,12 +1003,12 @@ export default function SpielerPage() {
     updateLastPlayedDate(character.id)
   }
 
-  const handleCharacterDelete = (characterId: string) => {
+  const handleCharacterDelete = async (characterId: string) => {
     if (!confirm('Möchtest du diesen Charakter wirklich löschen? Der Spielleiter kann ihn wiederherstellen.')) {
       return
     }
-
-    if (deleteCharacter(characterId)) {
+    const ok = await deleteCharacter(characterId)
+    if (ok) {
       loadData()
       if (selectedCharacter?.id === characterId) {
         setSelectedCharacter(null)
@@ -2903,9 +2905,11 @@ export default function SpielerPage() {
                             <button
                               onClick={async () => {
                                 if (confirm('Möchtest du diesen Eintrag wirklich löschen?')) {
-                                  const updatedEntries = journalEntries.filter(e => e.id !== entry.id)
-                                  setJournalEntries(updatedEntries)
-                                  localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
+                                  const { deleteJournalEntry } = await import('@/lib/data')
+                                  const ok = await deleteJournalEntry(entry.id)
+                                  if (ok) {
+                                    setJournalEntries(prev => prev.filter(e => e.id !== entry.id))
+                                  }
                                 }
                               }}
                               className="px-3 py-1 bg-red-600/50 hover:bg-red-700/70 text-white rounded text-sm transition-colors"
